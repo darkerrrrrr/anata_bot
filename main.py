@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
-# 🔍 OTF形式のフォントを読み込むために「TTFont」を使用します（ReportLabではOTFもTTFontクラスで読み込めます）
 from reportlab.pdfbase.ttfonts import TTFont
 
 # 環境変数の読み込み
@@ -17,7 +16,7 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = True  # メッセージ内容を読み取る設定
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
@@ -51,8 +50,8 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             p = canvas.Canvas(pdf_buffer, pagesize=A4)
             width, height = A4
             
-            # 🔍 fonts フォルダの中にある OTF フォントファイルの正確な場所を指定します
-            font_path = os.path.join("fonts", "akazukinpop.otf")
+            # 🔍 フォルダ名「font」と、実際のファイル名「AkazukiPOP.otf」に完全に合わせました！
+            font_path = os.path.join("font", "AkazukiPOP.otf")
             
             # フォルダからOTFフォントを読み込んで「Akazukin」という名前で登録
             pdfmetrics.registerFont(TTFont('Akazukin', font_path))
