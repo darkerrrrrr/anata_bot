@@ -5,18 +5,19 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-# PDF作成用のライブラリ
+# PDF作成用、および外部フォントを登録するためのライブラリ
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+# 🔍 OTF形式のフォントを読み込むために「TTFont」を使用します（ReportLabではOTFもTTFontクラスで読み込めます）
+from reportlab.pdfbase.ttfonts import TTFont
 
 # 環境変数の読み込み
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
-intents.message_content = True  # メッセージ内容を読み取る設定
+intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
@@ -50,9 +51,12 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             p = canvas.Canvas(pdf_buffer, pagesize=A4)
             width, height = A4
             
-            # 🔍 フォントを「HeiseiMin-W7」に変更しました！
-            pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W7'))
-            p.setFont('HeiseiMin-W7', 14) # 文字サイズ14pt
+            # 🔍 fonts フォルダの中にある OTF フォントファイルの正確な場所を指定します
+            font_path = os.path.join("fonts", "akazukinpop.otf")
+            
+            # フォルダからOTFフォントを読み込んで「Akazukin」という名前で登録
+            pdfmetrics.registerFont(TTFont('Akazukin', font_path))
+            p.setFont('Akazukin', 14) # 文字サイズ14pt
             
             x = 50
             y = height - 80
@@ -61,7 +65,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             for line in message_text.split('\n'):
                 if y < 50:
                     p.showPage()
-                    p.setFont('HeiseiMin-W7', 14) # 🔍 2ページ目もW7に指定
+                    p.setFont('Akazukin', 14) # 2ページ目もあかずきんポップを指定
                     y = height - 80
                 p.drawString(x, y, line)
                 y -= line_height
@@ -83,7 +87,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             await interaction.followup.send("相手のDMが閉じられているため、送信できませんでした。", ephemeral=True)
         except Exception as e:
             print(f"PDF作成エラー: {e}")
-            await interaction.followup.send("送信中にエラーが発生しました。", ephemeral=True)
+            await interaction.followup.send(f"送信中にエラーが発生しました。理由: {e}", ephemeral=True)
 
 
 # --- スラッシュコマンドの設定 ---
@@ -105,7 +109,7 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
         await interaction.response.send_message("ユーザーの取得中にエラーが発生しました。", ephemeral=True)
 
 
-# --- 🧹 !purge コマンドの設定（DM画面でも機能する削除機能） ---
+# --- 🧹 !purge コマンドの設定 ---
 @bot.command(name="purge")
 async def purge_messages(ctx, limit: int = 100):
     deleted_count = 0
