@@ -5,11 +5,13 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-# PDF作成用、および外部フォント（TTF）を登録するためのライブラリ
+# PDF作成、および文章を自動折り返しさせるためのライブラリ
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # 環境変数の読み込み
 load_dotenv()
@@ -27,12 +29,13 @@ async def on_ready():
 
 # --- モーダルウィンドウ（入力フォーム）の定義 ---
 class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
+    # 🔍 max_length を「1000」から、Discordの上限である「4000」に変更しました！
     message_input = discord.ui.TextInput(
         label="手紙の中身",
         style=discord.TextStyle.long,
-        placeholder="ここに伝えたい想いを入力してください...",
+        placeholder="ここに伝えたい想いを入力してください（最大4000文字まで）...",
         required=True,
-        max_length=1000
+        max_length=4000
     )
 
     def __init__(self, target_user: discord.User):
@@ -47,37 +50,54 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             # --- 📄 PDFを作成する処理 ---
             pdf_buffer = io.BytesIO()
-            p = canvas.Canvas(pdf_buffer, pagesize=A4)
-            width, height = A4
             
-            # 🔍 あなたが変換したファイル名に合わせて「AkazukiPOP.ttf」に指定しました！
+            # フォントファイルの場所を指定して登録
             font_path = os.path.join("font", "AkazukiPOP.ttf")
-            
-            # フォルダからTTFフォントを読み込んで「Akazukin」という名前で登録
             pdfmetrics.registerFont(TTFont('Akazukin', font_path))
-            p.setFont('Akazukin', 14) # 文字サイズ14pt
             
-            x = 50
-            y = height - 80
-            line_height = 24
+            # A4用紙の余白設定（上下左右に50ポイントの壁を作ります）
+            doc = SimpleDocTemplate(
+                pdf_buffer, 
+                pagesize=A4,
+                leftMargin=50,
+                rightMargin=50,
+                topMargin=50,
+                bottomMargin=50
+            )
             
+            # 手紙の文字スタイルを作成
+            styles = getSampleStyleSheet()
+            letter_style = ParagraphStyle(
+                name='LetterStyle',
+                fontName='Akazukin',
+                fontSize=16,       # 文字の大きさ16pt
+                leading=28,        # 行の間隔28pt
+                textColor='black'  # 文字の色
+            )
+            
+            # 入力された文章をPDF用のデータ（ストーリー）に変換していきます
+            story = []
+            
+            # あなたが手動で入れた改行（\n）を保ちつつ、長い行は自動で折り返す処理
             for line in message_text.split('\n'):
-                if y < 50:
-                    p.showPage()
-                    p.setFont('Akazukin', 14) # 2ページ目もあかずきんポップを指定
-                    y = height - 80
-                p.drawString(x, y, line)
-                y -= line_height
+                if line.strip() == "":
+                    # 空行の場合はスペースを空ける
+                    story.append(Spacer(1, 28))
+                else:
+                    # 文字がある行は、右端で自動折り返しする設定で追加
+                    safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    story.append(Paragraph(safe_line, letter_style))
             
-            p.showPage()
-            p.save()
+            # PDFの組み立て（4000文字の長文になっても自動的に次のページが作られます）
+            doc.build(story)
+            
             pdf_buffer.seek(0)
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
             # --- 📄 PDF作成ここまで ---
             
             # 相手のDMへ手紙を送信
             await self.target_user.send(
-                content="📩 あなたへ匿名的の想いが届いています。PDFファイルを開いて読んでください。", 
+                content="📩 あなたへ匿名の想いが届いています。PDFファイルを開いて読んでください。", 
                 file=discord_file
             )
             await interaction.followup.send("想いをPDFファイルにして届けました。", ephemeral=True)
@@ -94,7 +114,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
 @app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
 async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
     
-    if not 相手のid.isdigit():
+    if not 相手.id.isdigit():
         await interaction.response.send_message("【エラー】ユーザーIDは数字だけで入力してください。", ephemeral=True)
         return
 
