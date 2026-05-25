@@ -5,12 +5,18 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
+# PDF作成とフォント登録のためのライブラリ
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+
 # 環境変数の読み込み
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
-intents.message_content = True  # 警告を消すための設定
+intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
@@ -38,37 +44,69 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         
         try:
             message_text = self.message_input.value
-            file_data = io.BytesIO(message_text.encode('utf-8'))
-            discord_file = discord.File(file_data, filename="想い.txt")
             
+            # --- 📄 ここから綺麗なPDFを作成する処理 ---
+            pdf_buffer = io.BytesIO()
+            
+            # A4サイズの縦向きでPDFを作成
+            p = canvas.Canvas(pdf_buffer, pagesize=A4)
+            width, height = A4
+            
+            # 🖋️ 日本語の綺麗で上品なフォント（HeiseiMin-W3: 平成明朝体）を登録して使用
+            # 相手のスマホやPCでも必ずきれいに表示される標準のフォントです
+            pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
+            p.setFont('HeiseiMin-W3', 14) # フォント名と文字の大きさ(14pt)を指定
+            
+            # 文章の書き出し位置（左上の余白設定）
+            x = 50
+            y = height - 80
+            line_height = 24  # 改行したときの行の間隔
+            
+            # 入力された文章を改行ごとに分けて、1行ずつPDFに書き込む
+            for line in message_text.split('\n'):
+                # 画面の下までいったら新しいページを作成する（長文対策）
+                if y < 50:
+                    p.showPage()
+                    p.setFont('HeiseiMin-W3', 14)
+                    y = height - 80
+                
+                p.drawString(x, y, line)
+                y -= line_height # 次の行のために位置を下げる
+            
+            # PDFの編集を終了して保存
+            p.showPage()
+            p.save()
+            
+            # 作成したPDFデータをDiscordで送れるファイル形式に変換
+            pdf_buffer.seek(0)
+            discord_file = discord.File(pdf_buffer, filename="想い.pdf")
+            # --- 📄 PDF作成処理ここまで ---
+            
+            # 相手のDMへ送信
             await self.target_user.send(
-                content="📩 あなたへ匿名の想いが届いています。ファイルを開いて読んでください。", 
+                content="📩 あなたへ匿名の想いが届いています。PDFファイルを開いて読んでください。", 
                 file=discord_file
             )
-            await interaction.followup.send("想いをファイルにして届けました。", ephemeral=True)
+            await interaction.followup.send("想いを綺麗なPDFファイルにして届けました。", ephemeral=True)
             
         except discord.Forbidden:
             await interaction.followup.send("相手のDMが閉じられているため、送信できませんでした。", ephemeral=True)
         except Exception as e:
+            print(f"PDF作成エラー: {e}")
             await interaction.followup.send("送信中にエラーが発生しました。", ephemeral=True)
 
 
 # --- スラッシュコマンドの設定 ---
-# 🔍 引数の「interaction」を「discord.Interaction」に修正しました
-@bot.tree.command(name="貴方に", description="匿名の手紙（txtファイル）を相手のDMに届けます")
+@bot.tree.command(name="貴方に", description="匿名の手紙（PDFファイル）を相手のDMに届けます")
 @app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
 async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
     
-    # 入力されたIDが数字だけかチェック
     if not 相手のid.isdigit():
         await interaction.response.send_message("【エラー】ユーザーIDは数字だけで入力してください。", ephemeral=True)
         return
 
     try:
-        # Discord全体から、IDをもとにユーザーを取得します
         target_user = await bot.fetch_user(int(相手のid))
-        
-        # ユーザーが見つかったら、入力フォーム（モーダル）を開きます
         await interaction.response.send_modal(MessageModal(target_user=target_user))
         
     except discord.NotFound:
@@ -77,5 +115,4 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
         await interaction.response.send_message("ユーザーの取得中にエラーが発生しました。", ephemeral=True)
 
 
-# 安全にトークンを読み込んで起動
 bot.run(TOKEN)
