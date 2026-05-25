@@ -29,7 +29,6 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         max_length=1000
     )
 
-    # discord.User ではなく、取得したユーザーオブジェクトを受け取るようにします
     def __init__(self, target_user: discord.User):
         super().__init__()
         self.target_user = target_user
@@ -55,10 +54,10 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
 
 
 # --- スラッシュコマンドの設定 ---
-# 🔍 ここを「discord.User」から「相手のid: str」に変更しました！
+# 🔍 引数の「interaction」を「discord.Interaction」に修正しました
 @bot.tree.command(name="貴方に", description="匿名の手紙（txtファイル）を相手のDMに届けます")
 @app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
-async def send_anonymous_file(interaction: interaction, 相手のid: str):
+async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
     
     # 入力されたIDが数字だけかチェック
     if not 相手のid.isdigit():
@@ -66,7 +65,7 @@ async def send_anonymous_file(interaction: interaction, 相手のid: str):
         return
 
     try:
-        # Discord全体（フレンド・未フレンド問わず）から、IDをもとにユーザーを取得します
+        # Discord全体から、IDをもとにユーザーを取得します
         target_user = await bot.fetch_user(int(相手のid))
         
         # ユーザーが見つかったら、入力フォーム（モーダル）を開きます
@@ -78,5 +77,5 @@ async def send_anonymous_file(interaction: interaction, 相手のid: str):
         await interaction.response.send_message("ユーザーの取得中にエラーが発生しました。", ephemeral=True)
 
 
-# 安全にトークンを読み込んで起動（あなたのTOKEN設定のままです）
+# 安全にトークンを読み込んで起動
 bot.run(TOKEN)
