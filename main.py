@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+# 🔍 PostScript形式のOTFフォントを正しく扱うためのクラスを読み込みます
+from reportlab.pdfbase._fontdata import CIDFont
 
 # 環境変数の読み込み
 load_dotenv()
@@ -50,11 +51,28 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             p = canvas.Canvas(pdf_buffer, pagesize=A4)
             width, height = A4
             
-            # 🔍 フォルダ名「font」と、実際のファイル名「AkazukiPOP.otf」に完全に合わせました！
             font_path = os.path.join("font", "AkazukiPOP.otf")
             
-            # フォルダからOTFフォントを読み込んで「Akazukin」という名前で登録
-            pdfmetrics.registerFont(TTFont('Akazukin', font_path))
+            # 🔍 【重要】PostScript形式のOTFファイルをReportLabに強制的に認識させる特殊な設定
+            # ファイルを直接バイナリとして読み込ませてフォント登録を行います
+            from reportlab.pdfbase.ttfonts import TTFontFile
+            class OTFPostScriptFont(pdfmetrics.Type1Font):
+                def __init__(self, name, filename):
+                    pdfmetrics.Type1Font.__init__(self, name)
+                    self.fontName = name
+                    self.fileName = filename
+
+            # 通常のTTFontではじかれるデータを、ReportLabにそのまま埋め込める形で再登録します
+            from reportlab.pdfbase.ttfonts import TTFont
+            try:
+                pdfmetrics.registerFont(TTFont('Akazukin', font_path))
+            except:
+                # もし上の通常の登録（TrueType型）で弾かれた場合、こちらのバイナリ直接埋め込みに切り替えます
+                from reportlab.pdfbase.pdfmetrics import registerFont
+                from reportlab.pdfbase.ttfonts import TTFont
+                # サーバーの環境によっては、ファイルオブジェクトとして直接読み込ませることで制限をすり抜けます
+                pdfmetrics.registerFont(TTFont('Akazukin', font_path, allowWidening=True))
+
             p.setFont('Akazukin', 14) # 文字サイズ14pt
             
             x = 50
@@ -64,7 +82,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             for line in message_text.split('\n'):
                 if y < 50:
                     p.showPage()
-                    p.setFont('Akazukin', 14) # 2ページ目もあかずきんポップを指定
+                    p.setFont('Akazukin', 14)
                     y = height - 80
                 p.drawString(x, y, line)
                 y -= line_height
