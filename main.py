@@ -11,17 +11,13 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
-# 環境変数の読み込み
+# 環境変数の読み込み（あなたの設定のままです）
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = True  # メッセージ内容を読み取る設定
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-# 🔄 送信したメッセージの情報を一時的に保存するメモリ（辞書）
-# 構造: { あなたのユーザーID: [相手のDMに送ったメッセージオブジェクトのリスト] }
-sent_messages_cache = {}
 
 @bot.event
 async def on_ready():
@@ -39,10 +35,9 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         max_length=1000
     )
 
-    def __init__(self, target_user: discord.User, sender_id: int):
+    def __init__(self, target_user: discord.User):
         super().__init__()
         self.target_user = target_user
-        self.sender_id = sender_id  # 送信者のIDを記録
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -76,17 +71,11 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
             # --- 📄 PDF作成ここまで ---
             
-            # 相手のDMへ手紙を送信し、送信された「メッセージの情報」を変数に保存します
-            sent_message = await self.target_user.send(
+            # 相手のDMへ手紙を送信
+            await self.target_user.send(
                 content="📩 あなたへ匿名の想いが届いています。PDFファイルを開いて読んでください。", 
                 file=discord_file
             )
-            
-            # 💡 送信したメッセージの情報をあなたのIDと紐づけてメモリに保存します
-            if self.sender_id not in sent_messages_cache:
-                sent_messages_cache[self.sender_id] = []
-            sent_messages_cache[self.sender_id].append(sent_message)
-            
             await interaction.followup.send("想いをPDFファイルにして届けました。", ephemeral=True)
             
         except discord.Forbidden:
@@ -107,8 +96,7 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
 
     try:
         target_user = await bot.fetch_user(int(相手のid))
-        # モーダルを開く際に、あなたのID（interaction.user.id）も一緒に渡します
-        await interaction.response.send_modal(MessageModal(target_user=target_user, sender_id=interaction.user.id))
+        await interaction.response.send_modal(MessageModal(target_user=target_user))
         
     except discord.NotFound:
         await interaction.response.send_message("【エラー】そのIDのユーザーが見つかりませんでした。数字を確認してください。", ephemeral=True)
@@ -116,29 +104,23 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
         await interaction.response.send_message("ユーザーの取得中にエラーが発生しました。", ephemeral=True)
 
 
-# --- 🧹 !purge コマンドの設定（メッセージ削除機能） ---
+# --- 🧹 !purge コマンドの設定（Botのメッセージを消す） ---
 @bot.command(name="purge")
-async def purge_messages(ctx):
-    # コマンドを実行した人（あなた）が過去に送ったメッセージのリストを取得
-    user_id = ctx.author.id
-    
-    if user_id not in sent_messages_cache or len(sent_messages_cache[user_id]) == 0:
-        await ctx.send("取り消せるメッセージ（手紙）がありません。", delete_after=5)
-        return
-    
-    deleted_count = 0
-    # あなたが過去に送った手紙をループで1つずつ削除していく
-    for message in sent_messages_cache[user_id]:
-        try:
-            await message.delete() # 相手のDM画面からメッセージとPDFを削除
-            deleted_count += 1
-        except Exception as e:
-            print(f"メッセージ削除失敗: {e}")
-            
-    # 削除が終わったらメモリを空にする
-    sent_messages_cache[user_id] = []
-    
-    await ctx.send(f"あなたが送信した手紙（{deleted_count}件）を相手のDMからすべて取り消しました。", delete_after=5)
+async def purge_messages(ctx, limit: int = 100):
+    # コマンドを実行したチャット（あなたとBotの部屋）のメッセージをチェックする設定
+    def is_bot(m):
+        return m.author == bot.user # Botが送ったメッセージだけを対象にする
+
+    try:
+        # 過去100件の中から「Botが送ったメッセージ」だけを見つけて削除します
+        deleted = await ctx.channel.purge(limit=limit, check=is_bot)
+        
+        # 削除が終わったら、完了報告を送って5秒後に自動で消します
+        await ctx.send(f"Botのメッセージを {len(deleted)} 件削除しました。", delete_after=5)
+        
+    except Exception as e:
+        await ctx.send(f"削除中にエラーが発生しました: {e}", delete_after=5)
 
 
+# 安全にトークンを読み込んで起動
 bot.run(TOKEN)
