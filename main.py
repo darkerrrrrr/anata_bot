@@ -29,11 +29,10 @@ async def on_ready():
 
 # --- モーダルウィンドウ（入力フォーム）の定義 ---
 class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
-    # 🔍 max_length を「1000」から、Discordの上限である「4000」に変更しました！
     message_input = discord.ui.TextInput(
         label="手紙の中身",
         style=discord.TextStyle.long,
-        placeholder="ここに伝えたい想いを入力してください（最大4000文字まで）...",
+        placeholder="ここに伝えたい想いを入力してください...",
         required=True,
         max_length=4000
     )
@@ -88,7 +87,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                     safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     story.append(Paragraph(safe_line, letter_style))
             
-            # PDFの組み立て（4000文字の長文になっても自動的に次のページが作られます）
+            # PDFの組み立て
             doc.build(story)
             
             pdf_buffer.seek(0)
@@ -114,7 +113,8 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
 @app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
 async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
     
-    if not 相手.id.isdigit():
+    # 🔍 間違えていた「相手.id」を、正しい「相手のid」にしっかりと修正しました！
+    if not 相手のid.isdigit():
         await interaction.response.send_message("【エラー】ユーザーIDは数字だけで入力してください。", ephemeral=True)
         return
 
