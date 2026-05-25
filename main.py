@@ -11,7 +11,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
-# 環境変数の読み込み（あなたの設定のままです）
+# 環境変数の読み込み
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
@@ -104,20 +104,24 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
         await interaction.response.send_message("ユーザーの取得中にエラーが発生しました。", ephemeral=True)
 
 
-# --- 🧹 !purge コマンドの設定（Botのメッセージを消す） ---
+# --- 🧹 !purge コマンドの設定（DM画面でも機能する削除機能） ---
 @bot.command(name="purge")
 async def purge_messages(ctx, limit: int = 100):
-    # コマンドを実行したチャット（あなたとBotの部屋）のメッセージをチェックする設定
-    def is_bot(m):
-        return m.author == bot.user # Botが送ったメッセージだけを対象にする
-
+    deleted_count = 0
+    
     try:
-        # 過去100件の中から「Botが送ったメッセージ」だけを見つけて削除します
-        deleted = await ctx.channel.purge(limit=limit, check=is_bot)
+        # DM画面のメッセージ履歴を過去100件分取得してループ処理します
+        async for message in ctx.channel.history(limit=limit):
+            # メッセージの送信者がこのBot自身だった場合のみ削除します
+            if message.author == bot.user:
+                await message.delete()
+                deleted_count += 1
+                
+        # 削除が終わったら完了通知を送り、5秒後に自動消去します
+        await ctx.send(f"Botのメッセージを {deleted_count} 件削除しました。", delete_after=5)
         
-        # 削除が終わったら、完了報告を送って5秒後に自動で消します
-        await ctx.send(f"Botのメッセージを {len(deleted)} 件削除しました。", delete_after=5)
-        
+    except discord.Forbidden:
+        await ctx.send("メッセージを削除する権限がありませんでした。", delete_after=5)
     except Exception as e:
         await ctx.send(f"削除中にエラーが発生しました: {e}", delete_after=5)
 
