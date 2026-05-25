@@ -1,0 +1,33 @@
+name: Run Discord Bot
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    # 5時間ごとにワークフローを再起動して、6時間の強制終了制限を回避する
+    - cron: '0 */5 * * *'
+  workflow_dispatch: # 手動で即時起動できるボタン
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330 # 5時間半で一度安全にジョブを終了させる
+
+    steps:
+    - name: 1. コードのチェックアウト（最新v6）
+      uses: actions/checkout@v6
+
+    - name: 2. Pythonのセットアップ（最新v6 / Python3.13）
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+
+    - name: 3. ライブラリのインストール
+      run: |
+        python -m pip install --upgrade pip
+        pip install discord.py python-dotenv
+
+    - name: 4. Botの起動
+      env:
+        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+      run: python main.py
