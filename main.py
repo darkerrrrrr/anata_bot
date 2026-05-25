@@ -50,8 +50,9 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             p = canvas.Canvas(pdf_buffer, pagesize=A4)
             width, height = A4
             
-            pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
-            p.setFont('HeiseiMin-W3', 14) # 文字サイズ14pt
+            # 🔍 フォントを「HeiseiMin-W7」に変更しました！
+            pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W7'))
+            p.setFont('HeiseiMin-W7', 14) # 文字サイズ14pt
             
             x = 50
             y = height - 80
@@ -60,7 +61,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             for line in message_text.split('\n'):
                 if y < 50:
                     p.showPage()
-                    p.setFont('HeiseiMin-W3', 14)
+                    p.setFont('HeiseiMin-W7', 14) # 🔍 2ページ目もW7に指定
                     y = height - 80
                 p.drawString(x, y, line)
                 y -= line_height
@@ -110,14 +111,11 @@ async def purge_messages(ctx, limit: int = 100):
     deleted_count = 0
     
     try:
-        # DM画面のメッセージ履歴を過去100件分取得してループ処理します
         async for message in ctx.channel.history(limit=limit):
-            # メッセージの送信者がこのBot自身だった場合のみ削除します
             if message.author == bot.user:
                 await message.delete()
                 deleted_count += 1
                 
-        # 削除が終わったら完了通知を送り、5秒後に自動消去します
         await ctx.send(f"Botのメッセージを {deleted_count} 件削除しました。", delete_after=5)
         
     except discord.Forbidden:
