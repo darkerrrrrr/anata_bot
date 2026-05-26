@@ -32,7 +32,6 @@ async def on_ready():
 
 
 # --- 🛑 GitHub Actionsからの強制終了シグナルをキャッチして安全にログアウトする処理 ---
-# イベントループが起動した後にこの処理を登録するため、setup_hook を使用します
 async def ask_exit():
     print("終了シグナルを受信しました。安全にシャットダウンします...")
     await bot.close()
@@ -42,17 +41,14 @@ async def setup_hook():
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            # シグナルを受け取ったら ask_exit を非同期タスクとして実行する
             loop.add_signal_handler(sig, lambda: asyncio.create_task(ask_exit()))
         except NotImplementedError:
-            pass  # Windows等のテスト環境でのエラー回避
+            pass
 
 
 # --- ⚙️ スラッシュコマンド同期用（管理者が手動で実行） ---
-# 6時間ごとの再起動時に毎回同期が走ってコマンドが消えるのを防ぐため、
-# Botを導入後、一度だけチャット欄で「 !sync 」と発言して手動同期してください。
 @bot.command(name="sync")
-@commands.is_owner() # Botの作成者（あなた）だけが実行可能
+@commands.is_owner()
 async def sync_commands(ctx):
     await bot.tree.sync()
     await ctx.send("スラッシュコマンドの同期が完了しました！", delete_after=5)
@@ -63,9 +59,10 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
     message_input = discord.ui.TextInput(
         label="手紙の中身",
         style=discord.TextStyle.long,
+        # 💡 プレースホルダーをシンプルにして入力欄の挙動を安定させます
         placeholder="ここに伝えたい想いを入力してください...",
         required=True,
-        max_length=4000
+        max_length=2000  # 💡 PDF1ページに収まりやすい文字数に調整
     )
 
     def __init__(self, target_user: discord.User):
@@ -85,7 +82,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             font_path = os.path.join("font", "AkazukiPOP.ttf")
             pdfmetrics.registerFont(TTFont('Akazukin', font_path))
             
-            # A4用紙の余白設定（上下左右に50ポイントの壁を作ります）
+            # A4用紙の余白設定
             doc = SimpleDocTemplate(
                 pdf_buffer, 
                 pagesize=A4,
@@ -95,26 +92,23 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                 bottomMargin=50
             )
             
-            # 手紙の文字スタイルを作成
+            # 手紙の文字スタイルを作成（読みやすさ重視で微調整）
             styles = getSampleStyleSheet()
             letter_style = ParagraphStyle(
                 name='LetterStyle',
                 fontName='Akazukin',
-                fontSize=16,       # 文字の大きさ16pt
-                leading=28,        # 行の間隔28pt
-                textColor='black'  # 文字の色
+                fontSize=16,
+                leading=22,  # 💡 PDFの行間もギュッと詰まらないよう22に調整
+                textColor='black'
             )
             
-            # 入力された文章をPDF用のデータ（ストーリー）に変換していきます
             story = []
             
             # あなたが手動で入れた改行（\n）を保ちつつ、長い行は自動で折り返す処理
             for line in message_text.split('\n'):
                 if line.strip() == "":
-                    # 空行の場合はスペースを空ける
-                    story.append(Spacer(1, 28))
+                    story.append(Spacer(1, 22)) # 💡 空行の高さも揃えました
                 else:
-                    # 文字がある行は、右端で自動折り返しする設定で追加
                     safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     story.append(Paragraph(safe_line, letter_style))
             
@@ -123,7 +117,6 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             pdf_buffer.seek(0)
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
-            # --- PDF作成ここまで ---
             
             # 相手のDMへ手紙を送信
             await self.target_user.send(
@@ -178,5 +171,5 @@ async def purge_messages(ctx, limit: int = 100):
         await ctx.send(f"削除中にエラーが発生しました: {e}", delete_after=5)
 
 
-# 安全にトークンを読み込んで起動（内部で自動的にイベントループが作られます）
+# 安全に起動
 bot.run(TOKEN)
