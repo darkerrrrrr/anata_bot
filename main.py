@@ -1,6 +1,8 @@
 import os
 import io
 import discord
+import signal
+import asyncio
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -17,27 +19,29 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-# 💡 【修正】!purge コマンドを正常に動かすために default ではなく all に変更
+# !purge やメッセージ履歴を正常に読み込むため、すべてのIntentsを有効化
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# --- 🟢 起動時の処理 ---
 @bot.event
 async def on_ready():
-    # 💡 【修正】起動時の bot.tree.sync() はレートリミットの原因になるため削除しました
+    # 🔴 起動完了時に、強制的にステータスを「取り込み中」に変更します
+    await bot.change_presence(status=discord.Status.dnd)
     print(f"ログインしました: {bot.user}")
 
 
-# --- 💡 【追加】管理者が手動でスラッシュコマンドを同期するためのコマンド ---
-# Botを導入後、一度だけチャット欄で「 !sync 」と発言すればコマンドが登録されます。
-# 6時間ごとの自動再起動時に毎回同期されるのを防ぎます。
+# --- ⚙️ スラッシュコマンド同期用（管理者が手動で実行） ---
+# 6時間ごとの再起動時に毎回同期が走ってコマンドが消えるのを防ぐため、
+# Botを導入後、一度だけチャット欄で「 !sync 」と発言して手動同期してください。
 @bot.command(name="sync")
-@commands.is_owner() # Botの作成者だけが実行できるように制限
+@commands.is_owner() # Botの作成者（あなた）だけが実行可能
 async def sync_commands(ctx):
     await bot.tree.sync()
     await ctx.send("スラッシュコマンドの同期が完了しました！", delete_after=5)
 
 
-# --- モーダルウィンドウ（入力フォーム）の定義 ---
+# --- 📄 モーダルウィンドウ（入力フォーム）の定義 ---
 class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
     message_input = discord.ui.TextInput(
         label="手紙の中身",
@@ -57,7 +61,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         try:
             message_text = self.message_input.value
             
-            # --- 📄 PDFを作成する処理 ---
+            # --- PDFを作成する処理 ---
             pdf_buffer = io.BytesIO()
             
             # フォントファイルの場所を指定して登録
@@ -102,7 +106,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             pdf_buffer.seek(0)
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
-            # --- 📄 PDF作成ここまで ---
+            # --- PDF作成ここまで ---
             
             # 相手のDMへ手紙を送信
             await self.target_user.send(
@@ -118,7 +122,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             await interaction.followup.send(f"送信中にエラーが発生しました。理由: {e}", ephemeral=True)
 
 
-# --- スラッシュコマンドの設定 ---
+# --- 💬 スラッシュコマンドの設定 ---
 @bot.tree.command(name="貴方に", description="匿名の手紙（PDFファイル）を相手のDMに届けます")
 @app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
 async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
@@ -134,7 +138,6 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
     except discord.NotFound:
         await interaction.response.send_message("【エラー】そのIDのユーザーが見つかりませんでした。数字を確認してください。", ephemeral=True)
     except Exception as e:
-        # 💡 【修正】原因不明のエラーが起きた際にログを追えるように print を追加
         print(f"ユーザー取得エラー: {e}")
         await interaction.response.send_message(f"ユーザーの取得中にエラーが発生しました。理由: {e}", ephemeral=True)
 
@@ -157,6 +160,19 @@ async def purge_messages(ctx, limit: int = 100):
     except Exception as e:
         await ctx.send(f"削除中にエラーが発生しました: {e}", delete_after=5)
 
+
+# --- 🛑 GitHub Actionsからの強制終了シグナルをキャッチして安全にログアウトする処理 ---
+# これにより、6時間ごとのリレー時に古いBotが速やかにオフラインになります。
+def ask_exit():
+    print("終了シグナルを受信しました。安全にシャットダウンします...")
+    asyncio.create_task(bot.close())
+
+for sig in (signal.SIGINT, signal.SIGTERM):
+    try:
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(sig, ask_exit)
+    except NotImplementedError:
+        pass  # Windows等のテスト環境でのエラー回避
 
 # 安全にトークンを読み込んで起動
 bot.run(TOKEN)
