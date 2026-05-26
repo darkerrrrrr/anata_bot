@@ -3,11 +3,19 @@ name: Run Discord Bot
 on:
   push:
     branches:
-      - main  # あなたのメインブランチ名（masterの場合は master に変更してください）
-  workflow_dispatch: # 手動で起動・停止できるボタン
+      - main
+  workflow_dispatch: # 手動起動用
+  
+  # 💡 【追加】5時間30分ごとに自動でこのワークフローを実行します
+  schedule:
+    - cron: '0 */6 * * *'  # 6時間ごと（※協定世界時UTC基準）
 
-# 💡 【重要】ここを追加しました。
-# 同じワークフローが新しく走ったら、動いている古い方を自動的に強制終了（キャンセル）します。
+# 💡 【重要】スケジュール実行時に古いBotを強制終了させるため、
+# ワークフロー自身に「アクションをキャンセルする権限」を与えます。
+permissions:
+  actions: write
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
