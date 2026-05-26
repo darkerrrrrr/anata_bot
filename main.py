@@ -17,14 +17,24 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-intents = discord.Intents.default()
-intents.message_content = True  # メッセージ内容を読み取る設定
+# 💡 【修正】!purge コマンドを正常に動かすために default ではなく all に変更
+intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    # 💡 【修正】起動時の bot.tree.sync() はレートリミットの原因になるため削除しました
     print(f"ログインしました: {bot.user}")
+
+
+# --- 💡 【追加】管理者が手動でスラッシュコマンドを同期するためのコマンド ---
+# Botを導入後、一度だけチャット欄で「 !sync 」と発言すればコマンドが登録されます。
+# 6時間ごとの自動再起動時に毎回同期されるのを防ぎます。
+@bot.command(name="sync")
+@commands.is_owner() # Botの作成者だけが実行できるように制限
+async def sync_commands(ctx):
+    await bot.tree.sync()
+    await ctx.send("スラッシュコマンドの同期が完了しました！", delete_after=5)
 
 
 # --- モーダルウィンドウ（入力フォーム）の定義 ---
@@ -113,7 +123,6 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
 @app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
 async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
     
-    # 🔍 間違えていた「相手.id」を、正しい「相手のid」にしっかりと修正しました！
     if not 相手のid.isdigit():
         await interaction.response.send_message("【エラー】ユーザーIDは数字だけで入力してください。", ephemeral=True)
         return
@@ -125,7 +134,9 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
     except discord.NotFound:
         await interaction.response.send_message("【エラー】そのIDのユーザーが見つかりませんでした。数字を確認してください。", ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message("ユーザーの取得中にエラーが発生しました。", ephemeral=True)
+        # 💡 【修正】原因不明のエラーが起きた際にログを追えるように print を追加
+        print(f"ユーザー取得エラー: {e}")
+        await interaction.response.send_message(f"ユーザーの取得中にエラーが発生しました。理由: {e}", ephemeral=True)
 
 
 # --- 🧹 !purge コマンドの設定 ---
