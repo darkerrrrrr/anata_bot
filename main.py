@@ -31,6 +31,23 @@ async def on_ready():
     print(f"ログインしました: {bot.user}")
 
 
+# --- 🛑 GitHub Actionsからの強制終了シグナルをキャッチして安全にログアウトする処理 ---
+# イベントループが起動した後にこの処理を登録するため、setup_hook を使用します
+async def ask_exit():
+    print("終了シグナルを受信しました。安全にシャットダウンします...")
+    await bot.close()
+
+@bot.event
+async def setup_hook():
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            # シグナルを受け取ったら ask_exit を非同期タスクとして実行する
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(ask_exit()))
+        except NotImplementedError:
+            pass  # Windows等のテスト環境でのエラー回避
+
+
 # --- ⚙️ スラッシュコマンド同期用（管理者が手動で実行） ---
 # 6時間ごとの再起動時に毎回同期が走ってコマンドが消えるのを防ぐため、
 # Botを導入後、一度だけチャット欄で「 !sync 」と発言して手動同期してください。
@@ -161,18 +178,5 @@ async def purge_messages(ctx, limit: int = 100):
         await ctx.send(f"削除中にエラーが発生しました: {e}", delete_after=5)
 
 
-# --- 🛑 GitHub Actionsからの強制終了シグナルをキャッチして安全にログアウトする処理 ---
-# これにより、6時間ごとのリレー時に古いBotが速やかにオフラインになります。
-def ask_exit():
-    print("終了シグナルを受信しました。安全にシャットダウンします...")
-    asyncio.create_task(bot.close())
-
-for sig in (signal.SIGINT, signal.SIGTERM):
-    try:
-        loop = asyncio.get_running_loop()
-        loop.add_signal_handler(sig, ask_exit)
-    except NotImplementedError:
-        pass  # Windows等のテスト環境でのエラー回避
-
-# 安全にトークンを読み込んで起動
+# 安全にトークンを読み込んで起動（内部で自動的にイベントループが作られます）
 bot.run(TOKEN)
