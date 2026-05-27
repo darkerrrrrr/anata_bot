@@ -3,7 +3,6 @@ import io
 import discord
 import signal
 import asyncio
-from datetime import datetime
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -58,18 +57,15 @@ async def sync_commands(ctx):
 # --- 📝 PDFの背景に「便箋の罫線」を描画する関数 ---
 def draw_letter_lines(canvas_obj, doc):
     canvas_obj.saveState()
-    # 線の色を薄いセピア（グレーブラウン）に設定
     canvas_obj.setStrokeColorRGB(0.75, 0.72, 0.68)
     canvas_obj.setLineWidth(0.5)
     
-    # 横向きA4の高さの中で、上部120ptから下部60ptまで22pt間隔で罫線を引く
     start_y = 475
     end_y = 60
-    line_interval = 22  # 本文の leading と同じ幅
+    line_interval = 22
     
     current_y = start_y
     while current_y >= end_y:
-        # 左右の余白の間に線を引く
         canvas_obj.line(50, current_y, doc.pagesize - 50, current_y)
         current_y -= line_interval
         
@@ -78,12 +74,19 @@ def draw_letter_lines(canvas_obj, doc):
 
 # --- 📄 モーダルウィンドウ（入力フォーム）の定義 ---
 class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
-    # 💡 【変更】題名から「相手の名前」に変更しました
     name_input = discord.ui.TextInput(
         label="相手のなまえ（呼び名）",
         style=discord.TextStyle.short,
-        placeholder="例：〇〇へ、〇〇さんへ など（『へ』や『さん』は自動で付きます）",
+        placeholder="例：〇〇へ、〇〇さんへ など",
         required=True,
+        max_length=50
+    )
+
+    sender_input = discord.ui.TextInput(
+        label="あなたのなまえ（差出人名）",
+        style=discord.TextStyle.short,
+        placeholder="匿名にする場合はここは何も書かなくてOKです",
+        required=False,
         max_length=50
     )
 
@@ -95,30 +98,30 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         max_length=2000
     )
 
-    def __init__(self, target_user: discord.User):
+    def __init__(self, target_user: discord.User, show_name: bool):
         super().__init__()
         self.target_user = target_user
+        self.show_name = show_name
+        
+        # 名前を出さない設定の場合は差出人入力欄を非表示にします
+        if not show_name:
+            self.remove_item(self.sender_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
         try:
-            # 入力された「相手の名前」と「本文」をそれぞれ取得
             target_name = self.name_input.value
             message_text = self.message_input.value
             
-            # もし入力された名前に「へ」や「さん」が含まれていなければ、自動で「へ」を付けます
             if not (target_name.endswith("へ") or target_name.endswith("さん") or target_name.endswith("くん") or target_name.endswith("ちゃん")):
                 target_name = f"{target_name}へ"
             
             # --- PDFを作成する処理 ---
             pdf_buffer = io.BytesIO()
-            
-            # しっぽり明朝（通常版）のファイルパスを指定して登録
             font_path = os.path.join("font", "ShipporiMincho-Regular.ttf")
             pdfmetrics.registerFont(TTFont('ShipporiMincho', font_path))
             
-            # A4用紙の余白設定（横向き）
             doc = SimpleDocTemplate(
                 pdf_buffer, 
                 pagesize=landscape(A4),
@@ -130,17 +133,15 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             styles = getSampleStyleSheet()
             
-            # 💡 【変更】宛名用の文字スタイル（左寄せ：alignment=0、サイズは本文と同じ16pt）
             name_style = ParagraphStyle(
                 name='LetterNameStyle',
                 fontName='ShipporiMincho',
                 fontSize=16,
                 leading=22,
                 textColor='black',
-                alignment=0  # 0 は「左揃え（Left）」の意味です
+                alignment=0
             )
             
-            # 本文用のスタイル（しっぽり明朝・16pt）
             letter_style = ParagraphStyle(
                 name='LetterStyle',
                 fontName='ShipporiMincho',
@@ -149,7 +150,6 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                 textColor='black'
             )
             
-            # 日付（右寄せ）用のスタイル
             right_style = ParagraphStyle(
                 name='LetterRightStyle',
                 fontName='ShipporiMincho',
@@ -161,10 +161,10 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             story = []
             
-            # 💡 【変更】一番上に「相手の名前」を左寄せで配置し、下に1行分の空間を空けます
+            # 一番上に「相手の名前」を左寄せで配置
             safe_name = target_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             story.append(Paragraph(safe_name, name_style))
-            story.append(Spacer(1, 22))  # 宛名と本文を区切る空間
+            story.append(Spacer(1, 22))
             
             # 本文を1行ずつ追加していく処理
             for line in message_text.split('\n'):
@@ -174,10 +174,14 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                     safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     story.append(Paragraph(safe_line, letter_style))
             
-            # シンプルに「日付だけ」を右下に配置します
-            current_date = datetime.now().strftime("%Y年%m月%d日") [current_time];
-            story.append(Spacer(1, 22))  # 本文との間の隙間
-            story.append(Paragraph(f"{current_date}", right_style))
+            # 💡 【修正】日付は配置せず、名前を明かす場合のみ「〇〇より」を右下に追加します
+            if self.show_name and self.sender_input.value.strip() != "":
+                story.append(Spacer(1, 22))  # 本文との間に少し隙間
+                sender_name = self.sender_input.value
+                if not (sender_name.endswith("より") or sender_name.endswith("から")):
+                    sender_name = f"{sender_name}より"
+                safe_sender = sender_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                story.append(Paragraph(safe_sender, right_style))
             
             # 背景に罫線を描画して組み立て
             doc.build(story, onFirstPage=draw_letter_lines, onLaterPages=draw_letter_lines)
@@ -186,8 +190,10 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
             # --- PDF作成ここまで ---
             
+            dm_content = "📩 あなたへ想いの詰まった手紙が届いています。" if self.show_name else "📩 あなたへ匿名の想いが届いています。"
+            
             await self.target_user.send(
-                content="📩 あなたへ匿名の想いが届いています。PDFファイルを開いて読んでください。", 
+                content=f"{dm_content}PDFファイルを開いて読んでください。", 
                 file=discord_file
             )
             await interaction.followup.send("想いをPDFファイルにして届けました。", ephemeral=True)
@@ -200,9 +206,16 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
 
 
 # --- 💬 スラッシュコマンドの設定 ---
-@bot.tree.command(name="貴方に", description="匿名の手紙（PDFファイル）を相手のDMに届けます")
-@app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
-async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
+@bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます")
+@app_commands.describe(
+    相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください",
+    自分の名前を出す="『はい』にすると手紙にあなたの名前を載せられます。デフォルトは匿名（いいえ）です"
+)
+@app_commands.choices(自分の名前を出す=[
+    app_commands.Choice(name="はい（名前を明かす）", value="True"),
+    app_commands.Choice(name="いいえ（匿名で送る）", value="False")
+])
+async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str, 自分の名前を出す: str = "False"):
     
     if not 相手のid.isdigit():
         await interaction.response.send_message("【エラー】ユーザーIDは数字だけで入力してください。", ephemeral=True)
@@ -210,7 +223,8 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
 
     try:
         target_user = await bot.fetch_user(int(相手のid))
-        await interaction.response.send_modal(MessageModal(target_user=target_user))
+        show_name_bool = (自分の名前を出す == "True")
+        await interaction.response.send_modal(MessageModal(target_user=target_user, show_name=show_name_bool))
         
     except discord.NotFound:
         await interaction.response.send_message("【エラー】そのIDのユーザーが見つかりませんでした。数字を確認してください。", ephemeral=True)
