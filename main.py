@@ -56,13 +56,21 @@ async def sync_commands(ctx):
 
 # --- 📄 モーダルウィンドウ（入力フォーム）の定義 ---
 class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
+    # 💡 【新機能】手紙の題名（タイトル）を入力する欄を追加しました
+    title_input = discord.ui.TextInput(
+        label="手紙の題名（タイトル）",
+        style=discord.TextStyle.short,
+        placeholder="例：ありがとう、お祝い、伝えたいこと など",
+        required=True,
+        max_length=50
+    )
+
     message_input = discord.ui.TextInput(
         label="手紙の中身",
         style=discord.TextStyle.long,
-        # 💡 プレースホルダーをシンプルにして入力欄の挙動を安定させます
         placeholder="ここに伝えたい想いを入力してください...",
         required=True,
-        max_length=2000  # 💡 PDF1ページに収まりやすい文字数に調整
+        max_length=2000
     )
 
     def __init__(self, target_user: discord.User):
@@ -73,6 +81,8 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         await interaction.response.defer(ephemeral=True)
         
         try:
+            # 入力された「題名」と「本文」をそれぞれ取得
+            letter_title = self.title_input.value
             message_text = self.message_input.value
             
             # --- PDFを作成する処理 ---
@@ -92,22 +102,38 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                 bottomMargin=50
             )
             
-            # 手紙の文字スタイルを作成（読みやすさ重視で微調整）
             styles = getSampleStyleSheet()
+            
+            # 💡 【新機能】題名用の大きな文字スタイル（中央揃え、24pt）
+            title_style = ParagraphStyle(
+                name='LetterTitleStyle',
+                fontName='Akazukin',
+                fontSize=24,
+                leading=32,
+                textColor='black',
+                alignment=1  # 1 は「中央揃え（Center）」に配置する設定です
+            )
+            
+            # 本文用のスタイル（読みやすさ重視）
             letter_style = ParagraphStyle(
                 name='LetterStyle',
                 fontName='Akazukin',
                 fontSize=16,
-                leading=22,  # 💡 PDFの行間もギュッと詰まらないよう22に調整
+                leading=22,
                 textColor='black'
             )
             
             story = []
             
-            # あなたが手動で入れた改行（\n）を保ちつつ、長い行は自動で折り返す処理
+            # 💡 【新機能】PDFの一番上に題名を配置し、下に30ptのきれいな空間を空けます
+            safe_title = letter_title.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            story.append(Paragraph(safe_title, title_style))
+            story.append(Spacer(1, 30))  # 題名と本文を区切る空間
+            
+            # 本文を1行ずつ追加していく処理
             for line in message_text.split('\n'):
                 if line.strip() == "":
-                    story.append(Spacer(1, 22)) # 💡 空行の高さも揃えました
+                    story.append(Spacer(1, 22))
                 else:
                     safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     story.append(Paragraph(safe_line, letter_style))
@@ -117,6 +143,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             pdf_buffer.seek(0)
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
+            # --- PDF作成ここまで ---
             
             # 相手のDMへ手紙を送信
             await self.target_user.send(
