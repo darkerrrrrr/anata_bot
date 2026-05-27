@@ -5,13 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch: # 手動起動用
-  
-  # 💡 【追加】5時間30分ごとに自動でこのワークフローを実行します
   schedule:
-    - cron: '0 */6 * * *'  # 6時間ごと（※協定世界時UTC基準）
+    # 💡 空白時間をなくすため、「5時間30分ごと」に次のBotを起動させます（24時間連続ループ）
+    - cron: '30 */5 * * *'
 
-# 💡 【重要】スケジュール実行時に古いBotを強制終了させるため、
-# ワークフロー自身に「アクションをキャンセルする権限」を与えます。
+# 💡 新しいコンテナが立ち上がった瞬間、古いコンテナを自動で強制終了させてバトンタッチします
 permissions:
   actions: write
   contents: read
@@ -23,22 +21,21 @@ concurrency:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install discord.py python-dotenv reportlab
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install discord.py python-dotenv reportlab
 
-    - name: Run Python Script
-      env:
-        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-      run: python main.py
+      - name: Run Python Script
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        run: python main.py
