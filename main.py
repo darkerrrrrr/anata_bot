@@ -19,25 +19,19 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-# !purge やメッセージ履歴を正常に読み込むため、すべてのIntentsを有効化
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- 🟢 起動時の処理 ---
 @bot.event
 async def on_ready():
-    # 🔴 起動完了時に、強制的にステータスを「取り込み中」に変更します
     await bot.change_presence(status=discord.Status.dnd)
     print(f"ログインしました: {bot.user}")
-    
-    # 【自動同期】起動時に自動でスラッシュコマンドをDiscord側に登録します
     try:
         synced = await bot.tree.sync()
         print(f"スラッシュコマンドを自動同期しました。 ({len(synced)}個のコマンド)")
     except Exception as e:
         print(f"コマンドの自動同期中にエラーが発生しました: {e}")
 
-# --- 🛑 GitHub Actionsからの強制終了シグナルをキャッチして安全にログアウトする処理 ---
 async def ask_exit():
     print("終了シグナルを受信しました。安全にシャットダウンします...")
     await bot.close()
@@ -51,33 +45,27 @@ async def setup_hook():
         except NotImplementedError:
             pass
 
-# --- ⚙️ スラッシュコマンド同期用（手動予備） ---
 @bot.command(name="sync")
 @commands.is_owner()
 async def sync_commands(ctx):
     await bot.tree.sync()
     await ctx.send("スラッシュコマンドの手動同期が完了しました！", delete_after=5)
 
-# --- 📝 PDFの背景に「便箋の罫線」を描画する関数 ---
+# --- 📝 PDFの背景に「便箋の罫線」を描画する関数（全20行） ---
 def draw_letter_lines(canvas_obj, doc):
     canvas_obj.saveState()
-    # 線の色を薄いセピア（グレーブラウン）に設定
     canvas_obj.setStrokeColorRGB(0.75, 0.72, 0.68)
     canvas_obj.setLineWidth(0.5)
     
-    # 【バグ修正箇所】doc.pagesize(タプル型)から横幅と高さを正しく数値として分解取得します
     page_width, page_height = doc.pagesize
     
-    # 横向きA4の高さの中で、上部120ptから下部60ptまで22pt間隔で罫線を引く
-    start_y = 475
-    end_y = 60
-    line_interval = 22
-    current_y = start_y
+    # 24pt間隔で、全20行の罫線を引きます（文字の底辺に完全同期）
+    start_y = 486
+    line_interval = 24
     
-    while current_y >= end_y:
-        # 左右の余白（50pt 〜 横幅-50pt）の間に線を引く
+    for i in range(20):
+        current_y = start_y - (i * line_interval)
         canvas_obj.line(50, current_y, page_width - 50, current_y)
-        current_y -= line_interval
         
     canvas_obj.restoreState()
 
@@ -94,15 +82,15 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         label="あなたのなまえ（※匿名で送る場合は【空欄】のまま）",
         style=discord.TextStyle.short,
         placeholder="名前を出して想いを届けたい時だけ、ここに名前を書いてください",
-        required=False, # 空欄のまま（匿名）でも送信可能
+        required=False,
         max_length=50
     )
     message_input = discord.ui.TextInput(
-        label="手紙の中身",
+        label="手紙の中身（※便箋がピッタリ文字で埋まるように書いてください）",
         style=discord.TextStyle.long,
-        placeholder="ここに伝えたい想いを入力してください...",
+        placeholder="便箋の最後まで（約17〜18行分）想いをぎっしり入力してください...",
         required=True,
-        max_length=400 # 1ページに収めるため、最大文字数を400文字に制限
+        max_length=1000
     )
 
     def __init__(self, target_user: discord.User):
@@ -110,19 +98,65 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         self.target_user = target_user
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        try:
-            target_name = self.name_input.value
-            message_text = self.message_input.value
-            sender_name = self.sender_input.value.strip()
-            
-            # 名前が入力されているかどうかで匿名判定を行います
-            has_sender = (sender_name != "")
-            
-            if not (target_name.endswith("へ") or target_name.endswith("さん") or target_name.endswith("くん") or target_name.endswith("ちゃん")):
-                target_name = f"{target_name} へ"
+        # 💡 エラーチェックで送信を止める可能性があるため、ここではまだdefer（保留）せず、即時バリデーションします
+        target_name = self.name_input.value
+        message_text = self.message_input.value
+        sender_name = self.sender_input.value.strip()
+        
+        has_sender = (sender_name != "")
+        
+        if not (target_name.endswith("へ") or target_name.endswith("さん") or target_name.endswith("くん") or target_name.endswith("ちゃん")):
+            target_name = f"{target_name} へ"
+
+        if has_sender and not (sender_name.endswith("より") or sender_name.endswith("から")):
+            sender_name = f"{sender_name} より"
+
+        # --- 📐 行数の自動計算ロジック ---
+        # 1行に入る最大文字数は約34文字。これを元に、実際の総行数を割り出します。
+        MAX_CHARS_PER_LINE = 34
+        total_lines = 0
+        
+        # 1. 宛名：1行 ＋ 固定の隙間：1行 ＝ 計2行
+        total_lines += 2
+        
+        # 2. 本文の行数を改行と文字幅から計算
+        for line in message_text.split('\n'):
+            if line.strip() == "":
+                total_lines += 1  # 空白行
+            else:
+                # 文字数に応じた折り返し行数を計算
+                line_len = len(line)
+                lines_needed = (line_len + MAX_CHARS_PER_LINE - 1) // MAX_CHARS_PER_LINE
+                total_lines += lines_needed
                 
-            # --- PDFを作成する処理 ---
+        # 3. 差出人名：固定の隙間：1行 ＋ 名前：1行 ＝ 計2行
+        if has_sender:
+            total_lines += 2
+
+        # 💡 【超重要】全20行ぴったりになっているかチェックします
+        TARGET_LINES = 20
+        if total_lines != TARGET_LINES:
+            diff = TARGET_LINES - total_lines
+            if diff > 0:
+                await interaction.response.send_message(
+                    f"【便箋に余白があります】手紙の下部がスカスカになってしまいます。便箋をぴったり埋めるために、**あと約 {diff} 行分** 文章を書き足してください。（現在の合計: {total_lines}/20行）", 
+                    ephemeral=True
+                )
+            else:
+                await interaction.call_local_on_error(
+                    f"【便箋からはみ出しています】1枚に収まりきりません。きれいに収めるために、**あと約 {abs(diff)} 行分** 文章を削ってください。（現在の合計: {total_lines}/20行）",
+                    interaction
+                )
+                await interaction.response.send_message(
+                    f"【便箋からはみ出しています】1枚に収まりきりません。きれいに収めるために、**あと約 {abs(diff)} 行分** 文章を削ってください。（現在の合計: {total_lines}/20行）", 
+                    ephemeral=True
+                )
+            return
+
+        # チェックを通過したら処理を保留にしてPDF生成へ進みます
+        await interaction.response.defer(ephemeral=True)
+
+        try:
             pdf_buffer = io.BytesIO()
             font_path = os.path.join("font", "ShipporiMincho-Regular.ttf")
             pdfmetrics.registerFont(TTFont('ShipporiMincho', font_path))
@@ -132,66 +166,47 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                 pagesize=landscape(A4),
                 leftMargin=50,
                 rightMargin=50,
-                topMargin=50,
+                topMargin=36,
                 bottomMargin=50
             )
             
             styles = getSampleStyleSheet()
             name_style = ParagraphStyle(
-                name='LetterNameStyle',
-                fontName='ShipporiMincho',
-                fontSize=16,
-                leading=22,
-                textColor='black',
-                alignment=0
+                name='LetterNameStyle', fontName='ShipporiMincho', fontSize=16, leading=24, textColor='black', alignment=0
             )
             letter_style = ParagraphStyle(
-                name='LetterStyle',
-                fontName='ShipporiMincho',
-                fontSize=16,
-                leading=22,
-                textColor='black'
+                name='LetterStyle', fontName='ShipporiMincho', fontSize=16, leading=24, textColor='black'
             )
             right_style = ParagraphStyle(
-                name='LetterRightStyle',
-                fontName='ShipporiMincho',
-                fontSize=14,
-                leading=22,
-                textColor='black',
-                alignment=2
+                name='LetterRightStyle', fontName='ShipporiMincho', fontSize=14, leading=24, textColor='black', alignment=2
             )
             
             story = []
             
-            # 一番上に「相手の名前」を左寄せで配置
+            # 宛名配置（2行分消費）
             safe_name = target_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             story.append(Paragraph(safe_name, name_style))
-            story.append(Spacer(1, 22))
+            story.append(Spacer(1, 24))
             
-            # 本文を1行ずつ追加していく処理
+            # 本文配置
             for line in message_text.split('\n'):
                 if line.strip() == "":
-                    story.append(Spacer(1, 22))
+                    story.append(Spacer(1, 24))
                 else:
                     safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     story.append(Paragraph(safe_line, letter_style))
                     
-            # 名前が書いてあった場合のみ、右下に「〇〇より」を自動追加します（空欄なら完全匿名）
+            # 差出人配置（2行分消費）
             if has_sender:
-                story.append(Spacer(1, 22))
-                if not (sender_name.endswith("より") or sender_name.endswith("から")):
-                    sender_name = f"{sender_name} より"
+                story.append(Spacer(1, 24))
                 safe_sender = sender_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 story.append(Paragraph(safe_sender, right_style))
                 
-            # 内部のエラーを回避するため、両方のフックに同じ関数を設定してビルドします
             doc.build(story, onFirstPage=draw_letter_lines, onLaterPages=draw_letter_lines)
             pdf_buffer.seek(0)
             
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
-            # --- PDF作成ここまで ---
             
-            # 先頭にメンションを付与し、通知文章を「あなたへの想いが届いています。」に統一
             await self.target_user.send(
                 content=f"{self.target_user.mention}\n📩 あなたへの想いが届いています。PDFファイルを開いて読んでください。",
                 file=discord_file
@@ -214,7 +229,6 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
         
     try:
         target_user = await bot.fetch_user(int(相手のid))
-        # モーダルを開きます
         await interaction.response.send_modal(MessageModal(target_user=target_user))
     except discord.NotFound:
         await interaction.response.send_message("【エラー】そのIDのユーザーが見つかりませんでした。数字を確認してください。", ephemeral=True)
