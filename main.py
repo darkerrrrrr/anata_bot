@@ -57,16 +57,22 @@ async def sync_commands(ctx):
 # --- 📝 PDFの背景に「便箋の罫線」を描画する関数 ---
 def draw_letter_lines(canvas_obj, doc):
     canvas_obj.saveState()
+    # 線の色を薄いセピア（グレーブラウン）に設定
     canvas_obj.setStrokeColorRGB(0.75, 0.72, 0.68)
     canvas_obj.setLineWidth(0.5)
     
+    # 💡 【修正】横向きA4の横幅（約842pt）を正しく数字として取得します
+    page_width = doc.pagesize[0]
+    
+    # 横向きA4の高さの中で、上部120ptから下部60ptまで22pt間隔で罫線を引く
     start_y = 475
     end_y = 60
     line_interval = 22
     
     current_y = start_y
     while current_y >= end_y:
-        canvas_obj.line(50, current_y, doc.pagesize - 50, current_y)
+        # 左右の余白（50pt 〜 横幅-50pt）の間に線を引く
+        canvas_obj.line(50, current_y, page_width - 50, current_y)
         current_y -= line_interval
         
     canvas_obj.restoreState()
@@ -82,12 +88,11 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         max_length=50
     )
 
-    # 💡 【重要】モーダル内に差出人欄を常時表示。説明を分かりやすくしました
     sender_input = discord.ui.TextInput(
         label="あなたのなまえ（※匿名で送る場合は【空欄】のまま）",
         style=discord.TextStyle.short,
         placeholder="名前を出して想いを届けたい時だけ、ここに名前を書いてください",
-        required=False,  # 空欄でも送信できるようにします
+        required=False,  # 空欄のまま（匿名）でも送信可能
         max_length=50
     )
 
@@ -111,7 +116,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             message_text = self.message_input.value
             sender_name = self.sender_input.value.strip()
             
-            # 💡 名前が入力されているかどうかで匿名判定を自動で行います
+            # 名前が入力されているかどうかで匿名判定を行います
             has_sender = (sender_name != "")
             
             if not (target_name.endswith("へ") or target_name.endswith("さん") or target_name.endswith("くん") or target_name.endswith("ちゃん")):
@@ -174,7 +179,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                     safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     story.append(Paragraph(safe_line, letter_style))
             
-            # 💡 名前が書いてあった場合のみ、右下に「〇〇より」を自動追加します（空欄なら何も出ない＝完全匿名）
+            # 名前が書いてあった場合のみ、右下に「〇〇より」を自動追加します（空欄なら完全匿名）
             if has_sender:
                 story.append(Spacer(1, 22))
                 if not (sender_name.endswith("より") or sender_name.endswith("から")):
@@ -189,7 +194,6 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
             # --- PDF作成ここまで ---
             
-            # 💡 DMの通知テキストも、名入れか匿名かで自動で切り替わります
             dm_content = "📩 あなたへ想いの詰まった手紙が届いています。" if has_sender else "📩 あなたへ匿名の想いが届いています。"
             
             await self.target_user.send(
@@ -208,7 +212,6 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
 # --- 💬 スラッシュコマンドの設定 ---
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます")
 @app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
-# 💡 コマンドの引数は「相手のid」だけにスッキリ戻しました
 async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
     
     if not 相手のid.isdigit():
