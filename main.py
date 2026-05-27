@@ -30,7 +30,7 @@ async def on_ready():
     await bot.change_presence(status=discord.Status.dnd)
     print(f"ログインしました: {bot.user}")
     
-    # 【自動同期の追加】起動時に自動でスラッシュコマンドをDiscord側に登録します
+    # 【自動同期】起動時に自動でスラッシュコマンドをDiscord側に登録します
     try:
         synced = await bot.tree.sync()
         print(f"スラッシュコマンドを自動同期しました。 ({len(synced)}個のコマンド)")
@@ -65,7 +65,7 @@ def draw_letter_lines(canvas_obj, doc):
     canvas_obj.setStrokeColorRGB(0.75, 0.72, 0.68)
     canvas_obj.setLineWidth(0.5)
     
-    # 💡 横向きA4の横幅（約842pt）を正しく数字として取得します
+    # 横向きA4の横幅（約842pt）を正しく数字として取得します
     page_width = doc.pagesize
     
     # 横向きA4の高さの中で、上部120ptから下部60ptまで22pt間隔で罫線を引く
@@ -102,7 +102,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         style=discord.TextStyle.long,
         placeholder="ここに伝えたい想いを入力してください...",
         required=True,
-        max_length=2000
+        max_length=400 # 【修正点】1ページに収めるため、最大文字数を400文字に制限
     )
 
     def __init__(self, target_user: discord.User):
@@ -184,8 +184,8 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                 safe_sender = sender_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 story.append(Paragraph(safe_sender, right_style))
                 
-            # 背景に罫線を描画して組み立て
-            doc.build(story, onFirstPage=draw_letter_lines, onLaterPages=draw_letter_lines)
+            # 必ず1ページで収めるため、最初の1ページだけに罫線を引く設定に戻します
+            doc.build(story, onFirstPage=draw_letter_lines)
             pdf_buffer.seek(0)
             
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
