@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 
 # PDF作成、および文章を自動折り返しさせるためのライブラリ
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
+# 💡 【変更】用紙を横向きにするため landscape をインポートに追加
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
@@ -91,10 +92,10 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             font_path = os.path.join("font", "ShipporiMincho-Regular.ttf")
             pdfmetrics.registerFont(TTFont('ShipporiMincho', font_path))
             
-            # A4用紙の余白設定
+            # 💡 【変更】pagesize を landscape(A4) にして横向きに設定
             doc = SimpleDocTemplate(
                 pdf_buffer, 
-                pagesize=A4,
+                pagesize=landscape(A4),
                 leftMargin=50,
                 rightMargin=50,
                 topMargin=50,
@@ -103,7 +104,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             styles = getSampleStyleSheet()
             
-            # 💡 【変更】題名用の文字スタイルを18ptに縮小。圧迫感を無くしました
+            # 題名用の文字スタイル（しっぽり明朝・18pt）
             title_style = ParagraphStyle(
                 name='LetterTitleStyle',
                 fontName='ShipporiMincho',
@@ -127,7 +128,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             # PDFの一番上に題名を配置し、下に15ptのほどよい空間を空けます
             safe_title = letter_title.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             story.append(Paragraph(safe_title, title_style))
-            story.append(Spacer(1, 15))  # 💡 空間を30ptから15ptに半分に縮小
+            story.append(Spacer(1, 15))  # 題名と本文を区切る空間
             
             # 本文を1行ずつ追加していく処理
             for line in message_text.split('\n'):
