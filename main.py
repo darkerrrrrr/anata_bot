@@ -29,6 +29,13 @@ async def on_ready():
     # 🔴 起動完了時に、強制的にステータスを「取り込み中」に変更します
     await bot.change_presence(status=discord.Status.dnd)
     print(f"ログインしました: {bot.user}")
+    
+    # 【自動同期の追加】起動時に自動でスラッシュコマンドをDiscord側に登録します
+    try:
+        synced = await bot.tree.sync()
+        print(f"スラッシュコマンドを自動同期しました。 ({len(synced)}個のコマンド)")
+    except Exception as e:
+        print(f"コマンドの自動同期中にエラーが発生しました: {e}")
 
 # --- 🛑 GitHub Actionsからの強制終了シグナルをキャッチして安全にログアウトする処理 ---
 async def ask_exit():
@@ -44,12 +51,12 @@ async def setup_hook():
         except NotImplementedError:
             pass
 
-# --- ⚙️ スラッシュコマンド同期用（管理者が手動で実行） ---
+# --- ⚙️ スラッシュコマンド同期用（手動予備） ---
 @bot.command(name="sync")
 @commands.is_owner()
 async def sync_commands(ctx):
     await bot.tree.sync()
-    await ctx.send("スラッシュコマンドの同期が完了しました！", delete_after=5)
+    await ctx.send("スラッシュコマンドの手動同期が完了しました！", delete_after=5)
 
 # --- 📝 PDFの背景に「便箋の罫線」を描画する関数 ---
 def draw_letter_lines(canvas_obj, doc):
@@ -59,7 +66,7 @@ def draw_letter_lines(canvas_obj, doc):
     canvas_obj.setLineWidth(0.5)
     
     # 💡 横向きA4の横幅（約842pt）を正しく数字として取得します
-    page_width = doc.pagesize[0]
+    page_width = doc.pagesize
     
     # 横向きA4の高さの中で、上部120ptから下部60ptまで22pt間隔で罫線を引く
     start_y = 475
@@ -184,7 +191,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
             # --- PDF作成ここまで ---
             
-            # 【修正点】先頭にメンションを付与し、通知文章を「あなたへの想いが届いています。」に統一
+            # 先頭にメンションを付与し、通知文章を「あなたへの想いが届いています。」に統一
             await self.target_user.send(
                 content=f"{self.target_user.mention}\n📩 あなたへの想いが届いています。PDFファイルを開いて読んでください。",
                 file=discord_file
