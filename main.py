@@ -65,8 +65,8 @@ def draw_letter_lines(canvas_obj, doc):
     canvas_obj.setStrokeColorRGB(0.75, 0.72, 0.68)
     canvas_obj.setLineWidth(0.5)
     
-    # 横向きA4の横幅（約842pt）を正しく数字として取得します
-    page_width = doc.pagesize
+    # 【バグ修正箇所】doc.pagesize(タプル型)から横幅と高さを正しく数値として分解取得します
+    page_width, page_height = doc.pagesize
     
     # 横向きA4の高さの中で、上部120ptから下部60ptまで22pt間隔で罫線を引く
     start_y = 475
@@ -184,7 +184,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                 safe_sender = sender_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 story.append(Paragraph(safe_sender, right_style))
                 
-            # 【バグ修正】内部エラーを防ぐためonLaterPagesにも同じ描画関数を指定してビルドします
+            # 内部のエラーを回避するため、両方のフックに同じ関数を設定してビルドします
             doc.build(story, onFirstPage=draw_letter_lines, onLaterPages=draw_letter_lines)
             pdf_buffer.seek(0)
             
