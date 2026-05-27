@@ -82,11 +82,12 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         max_length=50
     )
 
+    # 💡 【重要】モーダル内に差出人欄を常時表示。説明を分かりやすくしました
     sender_input = discord.ui.TextInput(
-        label="あなたのなまえ（差出人名）",
+        label="あなたのなまえ（※匿名で送る場合は【空欄】のまま）",
         style=discord.TextStyle.short,
-        placeholder="匿名にする場合はここは何も書かなくてOKです",
-        required=False,
+        placeholder="名前を出して想いを届けたい時だけ、ここに名前を書いてください",
+        required=False,  # 空欄でも送信できるようにします
         max_length=50
     )
 
@@ -98,14 +99,9 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         max_length=2000
     )
 
-    def __init__(self, target_user: discord.User, show_name: bool):
+    def __init__(self, target_user: discord.User):
         super().__init__()
         self.target_user = target_user
-        self.show_name = show_name
-        
-        # 名前を出さない設定の場合は差出人入力欄を非表示にします
-        if not show_name:
-            self.remove_item(self.sender_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -113,6 +109,10 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         try:
             target_name = self.name_input.value
             message_text = self.message_input.value
+            sender_name = self.sender_input.value.strip()
+            
+            # 💡 名前が入力されているかどうかで匿名判定を自動で行います
+            has_sender = (sender_name != "")
             
             if not (target_name.endswith("へ") or target_name.endswith("さん") or target_name.endswith("くん") or target_name.endswith("ちゃん")):
                 target_name = f"{target_name}へ"
@@ -156,7 +156,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                 fontSize=14,
                 leading=22,
                 textColor='black',
-                alignment=2  # 右揃え
+                alignment=2
             )
             
             story = []
@@ -174,10 +174,9 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                     safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     story.append(Paragraph(safe_line, letter_style))
             
-            # 💡 【修正】日付は配置せず、名前を明かす場合のみ「〇〇より」を右下に追加します
-            if self.show_name and self.sender_input.value.strip() != "":
-                story.append(Spacer(1, 22))  # 本文との間に少し隙間
-                sender_name = self.sender_input.value
+            # 💡 名前が書いてあった場合のみ、右下に「〇〇より」を自動追加します（空欄なら何も出ない＝完全匿名）
+            if has_sender:
+                story.append(Spacer(1, 22))
                 if not (sender_name.endswith("より") or sender_name.endswith("から")):
                     sender_name = f"{sender_name}より"
                 safe_sender = sender_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -190,7 +189,8 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
             # --- PDF作成ここまで ---
             
-            dm_content = "📩 あなたへ想いの詰まった手紙が届いています。" if self.show_name else "📩 あなたへ匿名の想いが届いています。"
+            # 💡 DMの通知テキストも、名入れか匿名かで自動で切り替わります
+            dm_content = "📩 あなたへ想いの詰まった手紙が届いています。" if has_sender else "📩 あなたへ匿名の想いが届いています。"
             
             await self.target_user.send(
                 content=f"{dm_content}PDFファイルを開いて読んでください。", 
@@ -207,15 +207,9 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
 
 # --- 💬 スラッシュコマンドの設定 ---
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます")
-@app_commands.describe(
-    相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください",
-    自分の名前を出す="『はい』にすると手紙にあなたの名前を載せられます。デフォルトは匿名（いいえ）です"
-)
-@app_commands.choices(自分の名前を出す=[
-    app_commands.Choice(name="はい（名前を明かす）", value="True"),
-    app_commands.Choice(name="いいえ（匿名で送る）", value="False")
-])
-async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str, 自分の名前を出す: str = "False"):
+@app_commands.describe(相手のid="想いを届けたい相手のユーザーID（数字の羅列）を貼り付けてください")
+# 💡 コマンドの引数は「相手のid」だけにスッキリ戻しました
+async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str):
     
     if not 相手のid.isdigit():
         await interaction.response.send_message("【エラー】ユーザーIDは数字だけで入力してください。", ephemeral=True)
@@ -223,8 +217,8 @@ async def send_anonymous_file(interaction: discord.Interaction, 相手のid: str
 
     try:
         target_user = await bot.fetch_user(int(相手のid))
-        show_name_bool = (自分の名前を出す == "True")
-        await interaction.response.send_modal(MessageModal(target_user=target_user, show_name=show_name_bool))
+        # モーダルを開きます
+        await interaction.response.send_modal(MessageModal(target_user=target_user))
         
     except discord.NotFound:
         await interaction.response.send_message("【エラー】そのIDのユーザーが見つかりませんでした。数字を確認してください。", ephemeral=True)
