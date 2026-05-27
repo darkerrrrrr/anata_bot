@@ -56,7 +56,6 @@ async def sync_commands(ctx):
 
 # --- 📄 モーダルウィンドウ（入力フォーム）の定義 ---
 class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
-    # 💡 【新機能】手紙の題名（タイトル）を入力する欄を追加しました
     title_input = discord.ui.TextInput(
         label="手紙の題名（タイトル）",
         style=discord.TextStyle.short,
@@ -88,9 +87,9 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             # --- PDFを作成する処理 ---
             pdf_buffer = io.BytesIO()
             
-            # フォントファイルの場所を指定して登録
-            font_path = os.path.join("font", "AkazukiPOP.ttf")
-            pdfmetrics.registerFont(TTFont('Akazukin', font_path))
+            # しっぽり明朝（通常版）のファイルパスを指定して登録
+            font_path = os.path.join("font", "ShipporiMincho-Regular.ttf")
+            pdfmetrics.registerFont(TTFont('ShipporiMincho', font_path))
             
             # A4用紙の余白設定
             doc = SimpleDocTemplate(
@@ -104,20 +103,20 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             styles = getSampleStyleSheet()
             
-            # 💡 【新機能】題名用の大きな文字スタイル（中央揃え、24pt）
+            # 💡 【変更】題名用の文字スタイルを18ptに縮小。圧迫感を無くしました
             title_style = ParagraphStyle(
                 name='LetterTitleStyle',
-                fontName='Akazukin',
-                fontSize=24,
-                leading=32,
+                fontName='ShipporiMincho',
+                fontSize=18,
+                leading=24,
                 textColor='black',
-                alignment=1  # 1 は「中央揃え（Center）」に配置する設定です
+                alignment=1  # 中央揃え
             )
             
-            # 本文用のスタイル（読みやすさ重視）
+            # 本文用のスタイル（しっぽり明朝・16pt）
             letter_style = ParagraphStyle(
                 name='LetterStyle',
-                fontName='Akazukin',
+                fontName='ShipporiMincho',
                 fontSize=16,
                 leading=22,
                 textColor='black'
@@ -125,10 +124,10 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             story = []
             
-            # 💡 【新機能】PDFの一番上に題名を配置し、下に30ptのきれいな空間を空けます
+            # PDFの一番上に題名を配置し、下に15ptのほどよい空間を空けます
             safe_title = letter_title.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             story.append(Paragraph(safe_title, title_style))
-            story.append(Spacer(1, 30))  # 題名と本文を区切る空間
+            story.append(Spacer(1, 15))  # 💡 空間を30ptから15ptに半分に縮小
             
             # 本文を1行ずつ追加していく処理
             for line in message_text.split('\n'):
