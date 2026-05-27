@@ -102,7 +102,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         style=discord.TextStyle.long,
         placeholder="ここに伝えたい想いを入力してください...",
         required=True,
-        max_length=400 # 【修正点】1ページに収めるため、最大文字数を400文字に制限
+        max_length=400 # 1ページに収めるため、最大文字数を400文字に制限
     )
 
     def __init__(self, target_user: discord.User):
@@ -184,8 +184,8 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                 safe_sender = sender_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 story.append(Paragraph(safe_sender, right_style))
                 
-            # 必ず1ページで収めるため、最初の1ページだけに罫線を引く設定に戻します
-            doc.build(story, onFirstPage=draw_letter_lines)
+            # 【バグ修正】内部エラーを防ぐためonLaterPagesにも同じ描画関数を指定してビルドします
+            doc.build(story, onFirstPage=draw_letter_lines, onLaterPages=draw_letter_lines)
             pdf_buffer.seek(0)
             
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
