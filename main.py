@@ -98,65 +98,59 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         self.target_user = target_user
 
     async def on_submit(self, interaction: discord.Interaction):
-        # 💡 エラーチェックで送信を止める可能性があるため、ここではまだdefer（保留）せず、即時バリデーションします
-        target_name = self.name_input.value
-        message_text = self.message_input.value
-        sender_name = self.sender_input.value.strip()
-        
-        has_sender = (sender_name != "")
-        
-        if not (target_name.endswith("へ") or target_name.endswith("さん") or target_name.endswith("くん") or target_name.endswith("ちゃん")):
-            target_name = f"{target_name} へ"
-
-        if has_sender and not (sender_name.endswith("より") or sender_name.endswith("から")):
-            sender_name = f"{sender_name} より"
-
-        # --- 📐 行数の自動計算ロジック ---
-        # 1行に入る最大文字数は約34文字。これを元に、実際の総行数を割り出します。
-        MAX_CHARS_PER_LINE = 34
-        total_lines = 0
-        
-        # 1. 宛名：1行 ＋ 固定の隙間：1行 ＝ 計2行
-        total_lines += 2
-        
-        # 2. 本文の行数を改行と文字幅から計算
-        for line in message_text.split('\n'):
-            if line.strip() == "":
-                total_lines += 1  # 空白行
-            else:
-                # 文字数に応じた折り返し行数を計算
-                line_len = len(line)
-                lines_needed = (line_len + MAX_CHARS_PER_LINE - 1) // MAX_CHARS_PER_LINE
-                total_lines += lines_needed
-                
-        # 3. 差出人名：固定の隙間：1行 ＋ 名前：1行 ＝ 計2行
-        if has_sender:
-            total_lines += 2
-
-        # 💡 【超重要】全20行ぴったりになっているかチェックします
-        TARGET_LINES = 20
-        if total_lines != TARGET_LINES:
-            diff = TARGET_LINES - total_lines
-            if diff > 0:
-                await interaction.response.send_message(
-                    f"【便箋に余白があります】手紙の下部がスカスカになってしまいます。便箋をぴったり埋めるために、**あと約 {diff} 行分** 文章を書き足してください。（現在の合計: {total_lines}/20行）", 
-                    ephemeral=True
-                )
-            else:
-                await interaction.call_local_on_error(
-                    f"【便箋からはみ出しています】1枚に収まりきりません。きれいに収めるために、**あと約 {abs(diff)} 行分** 文章を削ってください。（現在の合計: {total_lines}/20行）",
-                    interaction
-                )
-                await interaction.response.send_message(
-                    f"【便箋からはみ出しています】1枚に収まりきりません。きれいに収めるために、**あと約 {abs(diff)} 行分** 文章を削ってください。（現在の合計: {total_lines}/20行）", 
-                    ephemeral=True
-                )
-            return
-
-        # チェックを通過したら処理を保留にしてPDF生成へ進みます
+        # 💡 【タイムアウトバグ修正】送信されたら最優先で即座に保留(defer)を行い、Discordの切断を防ぎます
         await interaction.response.defer(ephemeral=True)
-
+        
         try:
+            target_name = self.name_input.value
+            message_text = self.message_input.value
+            sender_name = self.sender_input.value.strip()
+            
+            has_sender = (sender_name != "")
+            
+            if not (target_name.endswith("へ") or target_name.endswith("さん") or target_name.endswith("くん") or target_name.endswith("ちゃん")):
+                target_name = f"{target_name} へ"
+
+            if has_sender and not (sender_name.endswith("より") or sender_name.endswith("から")):
+                sender_name = f"{sender_name} より"
+
+            # --- 📐 行数の自動計算ロジック ---
+            MAX_CHARS_PER_LINE = 34
+            total_lines = 0
+            
+            # 1. 宛名：2行（宛名本体 + 空白スペース）
+            total_lines += 2
+            
+            # 2. 本文の行数を計算
+            for line in message_text.split('\n'):
+                if line.strip() == "":
+                    total_lines += 1
+                else:
+                    line_len = len(line)
+                    lines_needed = (line_len + MAX_CHARS_PER_LINE - 1) // MAX_CHARS_PER_LINE
+                    total_lines += lines_needed
+                    
+            # 3. 差出人名：2行（空白スペース + 名前本体）
+            if has_sender:
+                total_lines += 2
+
+            # 💡 【チェック】全20行ぴったりになっているか
+            TARGET_LINES = 20
+            if total_lines != TARGET_LINES:
+                diff = TARGET_LINES - total_lines
+                if diff > 0:
+                    await interaction.followup.send(
+                        f"【便箋に余白があります】手紙の下部がスカスカになってしまいます。便箋をぴったり埋めるために、**あと約 {diff} 行分** 文章を書き足してください。（現在の合計: {total_lines}/20行）", 
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.followup.send(
+                        f"【便箋からはみ出しています】1枚に収まりきりません。きれいに収めるために、**あと約 {abs(diff)} 行分** 文章を削ってください。（現在の合計: {total_lines}/20行）", 
+                        ephemeral=True
+                    )
+                return
+
+            # --- PDFを作成する処理 ---
             pdf_buffer = io.BytesIO()
             font_path = os.path.join("font", "ShipporiMincho-Regular.ttf")
             pdfmetrics.registerFont(TTFont('ShipporiMincho', font_path))
