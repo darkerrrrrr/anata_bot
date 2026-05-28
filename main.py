@@ -106,7 +106,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         style=discord.TextStyle.long,
         placeholder="ここに伝えたい想いを入力してください...",
         required=True,
-        max_length=450 # 💡【最適化】1ページの最後まで（名前ありでも）ピッタリ書ききれる上限に再調整
+        max_length=450 
     )
 
     def __init__(self, target_user: discord.User):
@@ -147,7 +147,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             if has_sender:
                 total_lines += 2 # 差出人名分
 
-            # 💡 純粋に1ページ（20行）を超えて文字が消えてしまう時だけエラーを出します
+            # 純粋に1ページ（20行）を超えて文字が消えてしまう時だけエラーを出します
             TARGET_LINES = 20
             if total_lines > TARGET_LINES:
                 diff = total_lines - TARGET_LINES
@@ -205,8 +205,9 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             discord_file = discord.File(pdf_buffer, filename="想い.pdf")
             
+            # 💡【修正点】contentの先頭にあった {self.target_user.mention} を完全に削除しました
             await self.target_user.send(
-                content=f"{self.target_user.mention}\n📩 あなたへの想いが届いています。PDFファイルを開いて読んでください。",
+                content="📩 あなたへの想いが届いています。PDFファイルを開いて読んでください。",
                 file=discord_file
             )
             await interaction.followup.send("想いをPDFファイルにして届けました。", ephemeral=True)
