@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import discord
 import signal
 import asyncio
@@ -69,6 +70,26 @@ def draw_letter_lines(canvas_obj, doc):
         
     canvas_obj.restoreState()
 
+# --- 🌀 絵文字をTwemojiの画像タグに変換する関数 ---
+def convert_emojis_to_images(text):
+    # 安全のためにHTMLの特殊文字をエスケープ
+    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    
+    # Unicodeの絵文字を検出する正規表現パターン
+    emoji_pattern = re.compile(r'[\U00010000-\U0010ffff\u200d\u2600-\u27bf]+')
+    
+    def replace_with_img(match):
+        emoji = match.group(0)
+        # 絵文字のUnicodeコードポイント（16進数）を取得
+        codepoints = [f"{ord(c):x}" for c in emoji if ord(c) != 0xfe0f]
+        if not codepoints:
+            return emoji
+        codepoint_str = "-".join(codepoints)
+        # Twitterの絵文字(Twemoji)のCDN配信URLを使ってインライン画像タグを生成（文字サイズ16に合わせて高さを調整）
+        return f'<img src="https://jsdelivr.net{codepoint_str}.png" width="16" height="16" valign="middle"/>'
+    
+    return emoji_pattern.sub(replace_with_img, text)
+
 # --- 📄 モーダルウィンドウ（入力フォーム）の定義 ---
 class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
     name_input = discord.ui.TextInput(
@@ -86,9 +107,9 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         max_length=50
     )
     message_input = discord.ui.TextInput(
-        label="手紙の中身（※便箋がピッタリ文字で埋まるように書いてください）",
+        label="手紙の中身（※最大1ページに収めてください）",
         style=discord.TextStyle.long,
-        placeholder="便箋の最後まで（約17〜18行分）想いをぎっしり入力してください...",
+        placeholder="ここに伝えたい想いを入力してください...",
         required=True,
         max_length=1000
     )
@@ -98,7 +119,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         self.target_user = target_user
 
     async def on_submit(self, interaction: discord.Interaction):
-        # 💡 【タイムアウトバグ修正】送信されたら最優先で即座に保留(defer)を行い、Discordの切断を防ぎます
+        # タイムアウトを防ぐため即座に保留(defer)を行います
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -114,40 +135,35 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             if has_sender and not (sender_name.endswith("より") or sender_name.endswith("から")):
                 sender_name = f"{sender_name} より"
 
-            # --- 📐 行数の自動計算ロジック ---
+            # --- 📐 行数の自動計算ロジック（1ページ制限のチェック） ---
             MAX_CHARS_PER_LINE = 34
             total_lines = 0
             
-            # 1. 宛名：2行（宛名本体 + 空白スペース）
+            # 1. 宛名：2行
             total_lines += 2
             
-            # 2. 本文の行数を計算
+            # 2. 本文の行数
             for line in message_text.split('\n'):
                 if line.strip() == "":
                     total_lines += 1
                 else:
+                    # 絵文字画像タグに変換される前の純粋な文字数で概算します
                     line_len = len(line)
                     lines_needed = (line_len + MAX_CHARS_PER_LINE - 1) // MAX_CHARS_PER_LINE
                     total_lines += lines_needed
                     
-            # 3. 差出人名：2行（空白スペース + 名前本体）
+            # 3. 差出人名：2行
             if has_sender:
                 total_lines += 2
 
-            # 💡 【チェック】全20行ぴったりになっているか
+            # 💡 【1ページ制限チェック】20行を超えていたら送信をストップ
             TARGET_LINES = 20
-            if total_lines != TARGET_LINES:
-                diff = TARGET_LINES - total_lines
-                if diff > 0:
-                    await interaction.followup.send(
-                        f"【便箋に余白があります】手紙の下部がスカスカになってしまいます。便箋をぴったり埋めるために、**あと約 {diff} 行分** 文章を書き足してください。（現在の合計: {total_lines}/20行）", 
-                        ephemeral=True
-                    )
-                else:
-                    await interaction.followup.send(
-                        f"【便箋からはみ出しています】1枚に収まりきりません。きれいに収めるために、**あと約 {abs(diff)} 行分** 文章を削ってください。（現在の合計: {total_lines}/20行）", 
-                        ephemeral=True
-                    )
+            if total_lines > TARGET_LINES:
+                diff = total_lines - TARGET_LINES
+                await interaction.followup.send(
+                    f"【便箋からはみ出しています】手紙が2ページ目に突入してしまいます。1枚に美しく収めるために、**あと約 {diff} 行分** 文章を削ってください。（現在の合計: {total_lines}/20行）", 
+                    ephemeral=True
+                )
                 return
 
             # --- PDFを作成する処理 ---
@@ -177,24 +193,21 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             
             story = []
             
-            # 宛名配置（2行分消費）
-            safe_name = target_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            story.append(Paragraph(safe_name, name_style))
+            # 宛名配置（絵文字変換を適用）
+            story.append(Paragraph(convert_emojis_to_images(target_name), name_style))
             story.append(Spacer(1, 24))
             
-            # 本文配置
+            # 本文配置（絵文字変換を適用）
             for line in message_text.split('\n'):
                 if line.strip() == "":
                     story.append(Spacer(1, 24))
                 else:
-                    safe_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                    story.append(Paragraph(safe_line, letter_style))
+                    story.append(Paragraph(convert_emojis_to_images(line), letter_style))
                     
-            # 差出人配置（2行分消費）
+            # 差出人配置（絵文字変換を適用）
             if has_sender:
                 story.append(Spacer(1, 24))
-                safe_sender = sender_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                story.append(Paragraph(safe_sender, right_style))
+                story.append(Paragraph(convert_emojis_to_images(sender_name), right_style))
                 
             doc.build(story, onFirstPage=draw_letter_lines, onLaterPages=draw_letter_lines)
             pdf_buffer.seek(0)
