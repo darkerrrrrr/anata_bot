@@ -52,7 +52,7 @@ async def sync_commands(ctx):
     await bot.tree.sync()
     await ctx.send("スラッシュコマンドの手動同期が完了しました！", delete_after=5)
 
-# --- 📝 PDFの背景に「便箋の罫線」を描画する関数（全20行） ---
+# --- 📝 PDFの背景に「便箋の罫線」を描画する関数（全20行固定） ---
 def draw_letter_lines(canvas_obj, doc):
     canvas_obj.saveState()
     canvas_obj.setStrokeColorRGB(0.75, 0.72, 0.68)
@@ -60,7 +60,7 @@ def draw_letter_lines(canvas_obj, doc):
     
     page_width, page_height = doc.pagesize
     
-    # 24pt間隔で、全20行の罫線を正確に引きます
+    # 24pt間隔で、全20行の罫線を引きます（文字の底辺に完全同期）
     start_y = 486
     line_interval = 24
     
@@ -102,11 +102,11 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         max_length=50
     )
     message_input = discord.ui.TextInput(
-        label="手紙の中身（※便箋の最後までぎっしり書いてください）",
+        label="手紙の中身",
         style=discord.TextStyle.long,
-        placeholder="20行目の最後まで、あなたの想いで埋め尽くしてください...",
+        placeholder="ここに伝えたい想いを入力してください...",
         required=True,
-        max_length=1000 
+        max_length=450 # 💡【最適化】1ページの最後まで（名前ありでも）ピッタリ書ききれる上限に再調整
     )
 
     def __init__(self, target_user: discord.User):
@@ -114,7 +114,7 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
         self.target_user = target_user
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Discordの切断を防ぐため、最優先で保留(defer)
+        # タイムアウトを防ぐため即座に保留(defer)を行います
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -130,15 +130,12 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
             if has_sender and not (sender_name.endswith("より") or sender_name.endswith("から")):
                 sender_name = f"{sender_name} より"
 
-            # --- 📐 20行を「過不足なく」埋めるための計算ロジック ---
+            # --- 📐 2ページ目へのはみ出しのみを検知するセーフティロジック ---
             MAX_CHARS_PER_LINE = 34
-            TARGET_LINES = 20
             total_lines = 0
             
-            # 1. 宛名で2行分を消費
-            total_lines += 2
+            total_lines += 2 # 宛名分
             
-            # 2. 本文の行数を正確に計算
             for line in message_text.split('\n'):
                 if line.strip() == "":
                     total_lines += 1
@@ -147,27 +144,17 @@ class MessageModal(discord.ui.Modal, title="貴方の想いを伝える手紙"):
                     lines_needed = (line_len + MAX_CHARS_PER_LINE - 1) // MAX_CHARS_PER_LINE
                     total_lines += lines_needed
                     
-            # 3. 名前がある場合は2行分（空行+名前）を消費
             if has_sender:
-                total_lines += 2
+                total_lines += 2 # 差出人名分
 
-            # 💡 【完全固定チェック】20行ピッタリ以外は送信させない
-            if total_lines != TARGET_LINES:
-                diff = TARGET_LINES - total_lines
-                if diff > 0:
-                    # 行数不足（下が余る）
-                    approx_chars = diff * MAX_CHARS_PER_LINE
-                    await interaction.followup.send(
-                        f"【便箋の最後まで書かれていません】手紙の下部が余ってしまいます。便箋を完璧に埋め尽くすために、**あと約 {diff} 行分（約 {approx_chars} 文字）** 文章を書き足してください。（現在: {total_lines}/{TARGET_LINES}行）", 
-                        ephemeral=True
-                    )
-                else:
-                    # 行数オーバー（はみ出し）
-                    approx_chars = abs(diff) * MAX_CHARS_PER_LINE
-                    await interaction.followup.send(
-                        f"【便箋からはみ出しています】1枚に収まりきりません。美しい形にするために、**あと約 {abs(diff)} 行分（約 {approx_chars} 文字）** 文章を削ってください。（現在: {total_lines}/{TARGET_LINES}行）", 
-                        ephemeral=True
-                    )
+            # 💡 純粋に1ページ（20行）を超えて文字が消えてしまう時だけエラーを出します
+            TARGET_LINES = 20
+            if total_lines > TARGET_LINES:
+                diff = total_lines - TARGET_LINES
+                await interaction.followup.send(
+                    f"【便箋からはみ出しています】手紙が2ページ目に突入してしまいます。1枚に美しく収めるために、**あと約 {diff} 行分** 文章を削ってください。（現在の合計: {total_lines}/20行）", 
+                    ephemeral=True
+                )
                 return
 
             # --- PDFを作成する処理 ---
