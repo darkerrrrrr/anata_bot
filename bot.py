@@ -4,31 +4,34 @@ from discord import app_commands
 from discord.ext import commands
 import io
 
-# 【メッセージ入力画面（モーダル）の定義】
+# ─── 1. 画面表示に使う部品（クラス）の定義 ───
+
+# 【メッセージ入力画面（ポップアップ）】
 class LetterModal(discord.ui.Modal):
     def __init__(self, is_anonymous: bool):
         self.is_anonymous = is_anonymous
-        title_text = '大切な想いを届ける（匿名）' if is_anonymous else '大切な想いを届ける（名前あり）'
+        # 💡 モード名のみをシンプルに表示
+        title_text = '送信設定：匿名（名前を隠す）' if is_anonymous else '送信設定：通常（名前を出す）'
         super().__init__(title=title_text)
 
     # 届ける相手のユーザー名を入力する欄
     target_username = discord.ui.TextInput(
-        label='届ける相手のユーザー名', 
-        placeholder='例: discord_user（@は不要です）',
+        label='送信相手のユーザー名', 
+        placeholder='例: discord_user（@は不要）',
         max_length=32
     )
     
     # メッセージ本文を入力する欄
     letter_content = discord.ui.TextInput(
-        label='伝えたい想い（本文）', 
+        label='メッセージ本文', 
         style=discord.TextStyle.long, 
-        placeholder='ここにメッセージを書いてください...',
+        placeholder='送信したい文章を入力してください...',
         max_length=2000
     )
 
     # 送信ボタンが押された時の処理
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True) # 処理中マークを出す
+        await interaction.response.defer(ephemeral=True)
 
         input_name = self.target_username.value.strip().lstrip('@')
         target_user = None
@@ -43,19 +46,18 @@ class LetterModal(discord.ui.Modal):
         if not target_user:
             await interaction.followup.send(
                 f"エラー：「{input_name}」というユーザーが見つかりませんでした。\n"
-                "※Botと同じ共通のサーバーにいる人しか探すことができません。", 
+                "※Botと同じサーバーに所属しているユーザーのみ検索可能です。", 
                 ephemeral=True
             )
             return
 
         try:
-            # 送信モードの判定（チャット画面への表示テキスト）
+            # 💡 相手への通知も「匿名」か「誰からか」だけが1秒で伝わる形に変更
             if self.is_anonymous:
-                chat_message = "【どなたかから、あなたへ大切な想いが届いています】"
+                chat_message = "【匿名メッセージが届きました】"
             else:
-                chat_message = f"【差出人: {interaction.user.name} さんより、大切な想いが届いています】"
+                chat_message = f"【{interaction.user.name} さんからのメッセージが届きました】"
                 
-            # txtファイルの中身はユーザーが打った純粋な本文だけにする
             pure_content = self.letter_content.value
             
             # メモリー上にテキストファイル（.txt）を作成
@@ -65,30 +67,31 @@ class LetterModal(discord.ui.Modal):
             # 相手のDMに、案内メッセージとファイルを一緒に送信する
             await target_user.send(content=chat_message, file=discord_file)
             
-            # 送信した本人に完了報告（他の人には見えません）
-            await interaction.followup.send(f"無事に {target_user.name} さんのDMへ想いを届けました！", ephemeral=True)
+            # 送信した本人に完了報告
+            await interaction.followup.send(f"送信完了：{target_user.name} さんのDMへ届けました。", ephemeral=True)
             
         except discord.Forbidden:
-            await interaction.followup.send("エラー：相手がDMを閉じて留守にしているため、届けられませんでした。", ephemeral=True)
+            await interaction.followup.send("エラー：相手がDMを受信できない設定にしているため、送信できませんでした。", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"予期せぬエラーが発生しました: {e}", ephemeral=True)
 
 
-# 【送信モードの選択ボタンの定義】
+# 【送信方法を選ぶボタン】
 class SelectModeView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="匿名で送る", style=discord.ButtonStyle.primary)
+    # 💡 選択肢を無駄のない実用的なテキストに変更
+    @discord.ui.button(label="匿名（名前を隠して送信）", style=discord.ButtonStyle.primary)
     async def anonymous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LetterModal(is_anonymous=True))
 
-    @discord.ui.button(label="名前を出して送る", style=success_button_style := discord.ButtonStyle.success)
+    @discord.ui.button(label="通常（名前を出して送信）", style=discord.ButtonStyle.success)
     async def name_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LetterModal(is_anonymous=False))
 
 
-# ─── Botの本体設定 ───
+# ─── 2. Botの本体設定 ───
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -104,36 +107,30 @@ bot = MyBot()
 
 
 # 🚀 /send コマンドの登録
-@bot.tree.command(name="send", description="大切な人へメッセージをテキストファイルにして届けます")
+@bot.tree.command(name="send", description="指定したユーザーのDMにテキストファイルを送信します")
 async def send_command(interaction: discord.Interaction):
     await interaction.response.send_message(
-        "メッセージの送信モードを選択してください：", 
+        "送信モードを選択してください：", 
         view=SelectModeView(), 
         ephemeral=True
     )
 
 
-# 🛠️ !msgdel テキストコマンドの登録（余計な返信やスタンプを完全排除）
+# 🛠️ !msgdel テキストコマンドの登録
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """一般ユーザー誰でも実行可能：過去ログからBotのメッセージだけを無言で全消去します"""
-    
-    # もしサーバー側で「メッセージの管理権限」がBotにあれば、その場でユーザーの「!msgdel」を即座に消します
+    """過去ログからこのBotのメッセージだけを無言で全消去します"""
     try:
         await ctx.message.delete()
     except discord.DiscordException:
         pass
 
-    # 過去ログからBot自身のメッセージをすべて削除する処理
     async for message in ctx.channel.history(limit=limit):
         if message.author == bot.user:
             try:
                 await message.delete()
             except discord.DiscordException:
                 pass
-                
-    # 💡 リアクションやお掃除完了メッセージなどの無駄なコードはすべて削除しました。
-    # これにより、Botは何も喋らずにお片付けを終了します。
 
 
 @bot.event
