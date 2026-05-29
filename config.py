@@ -94,3 +94,8 @@ def generate_letter_pdf(target_name: str, sender_name: str, content: str) -> io.
     # 💡 【重要】書き込みが終わった直後に、読み込み位置を必ず先頭(0)に戻します
     pdf_buffer.seek(0)
     return pdf_buffer
+
+# 💡 【バラバラを防ぐ修正】main.py側が「import config」で読み込めるようにインテント設定をここに用意します
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
