@@ -20,7 +20,9 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_list=["!"], intents=intents)
+
+# 【修正箇所】command_list="!" を command_prefix="!" に変更しました
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # フォントの登録
 font_path = os.path.join("font", "ShipporiMincho-Regular.ttf")
@@ -275,5 +277,3 @@ if __name__ == "__main__":
         loop.run_until_complete(shutdown(loop))
     finally:
         loop.close()
-        print("Botが完全に停止しました。")
-
