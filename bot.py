@@ -4,20 +4,19 @@ from discord import app_commands
 from discord.ext import commands
 import io
 
-class LetterModal(discord.ui.Modal, title='大切な想いを届けるレター'):
+# ─── 2. ボタンを押した後に開く「メッセージ入力画面」 ───
+class LetterModal(discord.ui.Modal):
+    def __init__(self, is_anonymous: bool):
+        self.is_anonymous = is_anonymous
+        # ボタンの選択に応じてポップアップのタイトルを自動で切り替える
+        title_text = '大切な想いを届ける（匿名）' if is_anonymous else '大切な想いを届ける（名前あり）'
+        super().__init__(title=title_text)
+
     # 届ける相手のユーザー名を入力する欄
     target_username = discord.ui.TextInput(
         label='届ける相手のユーザー名', 
         placeholder='例: discord_user（@は不要です）',
         max_length=32
-    )
-    
-    # 匿名か名前ありかを選択する欄
-    anonymous_option = discord.ui.TextInput(
-        label='送信モード（「匿名」か「名前」と入力）', 
-        placeholder='匿名 にすると、あなたの名前は伏せられます。',
-        max_length=2,
-        default='匿名'
     )
     
     # メッセージ本文を入力する欄
@@ -51,11 +50,11 @@ class LetterModal(discord.ui.Modal, title='大切な想いを届けるレター'
             return
 
         try:
-            # チャット欄に表示する案内の文章（txtファイルには入れない）
-            if self.anonymous_option.value == '名前':
-                chat_message = f"【差出人: {interaction.user.name} さんより、大切な想いが届いています】"
-            else:
+            # 💡 【ボタンの選択結果をここで判定】
+            if self.is_anonymous:
                 chat_message = "【どなたかから、あなたへ大切な想いが届いています】"
+            else:
+                chat_message = f"【差出人: {interaction.user.name} さんより、大切な想いが届いています】"
                 
             # txtファイルの中身はユーザーが打った純粋な本文だけにする
             pure_content = self.letter_content.value
@@ -67,13 +66,30 @@ class LetterModal(discord.ui.Modal, title='大切な想いを届けるレター'
             # 相手のDMに、案内メッセージとファイルを一緒に送信する
             await target_user.send(content=chat_message, file=discord_file)
             
-            # 送信した本人に完了報告
+            # 送信した本人に完了報告（他の人には見えません）
             await interaction.followup.send(f"無事に {target_user.name} さんのDMへ想いを届けました！", ephemeral=True)
             
         except discord.Forbidden:
             await interaction.followup.send("エラー：相手がDMを閉じて留守にしているため、届けられませんでした。", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"予期せぬエラーが発生しました: {e}", ephemeral=True)
+
+# ─── 1. 最初にチャット欄に表示される「送信モードの選択ボタン」 ───
+class SelectModeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    # 匿名で送るボタン
+    @discord.ui.button(label="匿名で送る", style=discord.ButtonStyle.primary)
+    async def anonymous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # 匿名モード(True)でメッセージ入力画面を開く
+        await interaction.response.send_modal(LetterModal(is_anonymous=True))
+
+    # 名前を出して送るボタン
+    @discord.ui.button(label="名前を出して送る", style=discord.ButtonStyle.success)
+    async def name_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # 名前ありモード(False)でメッセージ入力画面を開く
+        await interaction.response.send_modal(LetterModal(is_anonymous=False))
 
 # ─── Botの本体設定 ───
 class MyBot(commands.Bot):
@@ -92,21 +108,22 @@ bot = MyBot()
 # /send コマンドの登録
 @bot.tree.command(name="send", description="大切な人へメッセージをテキストファイルにして届けます")
 async def send_command(interaction: discord.Interaction):
-    await interaction.response.send_modal(LetterModal())
+    # 最初に2つの選択ボタンを提示（ephemeral=True で実行した本人にしか見えないようにします）
+    await interaction.response.send_message(
+        "メッセージの送信モードを選択してください：", 
+        view=SelectModeView(), 
+        ephemeral=True
+    )
 
-# 🛠️ 【さらに改良】!msgdel コマンドの登録（打たれたコマンド自体も消去）
+# !msgdel コマンドの登録（打たれたコマンド自体も巻き込んで消去）
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
     """過去ログからこのBotのメッセージを見つけて消去し、打たれた !msgdel も一緒に消します"""
-    
-    # 💡 【追加】ユーザーが送信した「!msgdel」というメッセージ自体をまず最初に消す
-    # （※DM画面や、Botに権限がないサーバーではスキップされるよう、try-exceptで囲んでいます）
     try:
         await ctx.message.delete()
     except discord.DiscordException:
         pass
 
-    # 過去ログを遡ってBotのメッセージを消す処理
     async_history = ctx.channel.history(limit=limit)
     async for message in async_history:
         if message.author == bot.user:
