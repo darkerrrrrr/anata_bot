@@ -42,7 +42,6 @@ class LetterModal(discord.ui.Modal, title='大切な想いを届けるレター'
                 target_user = member
                 break # 見つかったらループを抜ける
 
-        # もし見つからなかった場合
         if not target_user:
             await interaction.followup.send(
                 f"エラー：「{input_name}」というユーザーが見つかりませんでした。\n"
@@ -80,13 +79,11 @@ class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.members = True          # メンバー検索の権限をON
-        intents.message_content = True  # !msgdel などの発言内容を読み取る権限をON
+        intents.message_content = True  # !msgdel の発言内容を読み取る権限をON
         
-        # コマンドプレフィックスを「!」に設定
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # スラッシュコマンド（/send）をDiscord側に登録する
         await self.tree.sync()
 
 bot = MyBot()
@@ -98,17 +95,16 @@ async def send_command(interaction: discord.Interaction):
 
 # !msgdel コマンドの登録
 @bot.command(name="msgdel")
-@commands.has_permissions(manage_messages=True) # メッセージ管理権限がある人のみ実行可能にする安全策
 async def msgdel_command(ctx, limit: int = 100):
-    """Bot自身のメッセージを過去100件の中から探して削除します"""
+    """【全員実行可能】この「貴方の想い」Bot自身のメッセージだけを探して削除します"""
     deleted_count = 0
     
-    # 処理中であることを伝える（後でこのメッセージも消します）
+    # 処理中であることを伝えるメッセージ（これも「貴方の想い」Botの発言です）
     status_msg = await ctx.send("Botのメッセージを削除中...")
     
     # チャンネルの過去ログを取得（デフォルト100件）
     async for message in ctx.channel.history(limit=limit):
-        # メッセージの送信者がこのBot自身、かつ、先ほどのステータスメッセージ以外の場合
+        # 💡 ここがポイント：メッセージの送信者が「このBot自身（bot.user）」の時だけ削除します
         if message.author == bot.user and message.id != status_msg.id:
             try:
                 await message.delete()
@@ -116,8 +112,8 @@ async def msgdel_command(ctx, limit: int = 100):
             except discord.Forbidden:
                 pass # 権限不足のエラーは無視する
                 
-    # 完了報告をして、その報告メッセージも自動で数秒後に消す
-    await status_msg.edit(content=f"Botのメッセージを {deleted_count} 件削除しました。")
+    # 完了報告をして、その報告メッセージも自動で3秒後に消します
+    await status_msg.edit(content=f"「貴方の想い」Botのメッセージを {deleted_count} 件削除しました。")
     await status_msg.delete(delay=3) # 3秒後に自動削除
 
 @bot.event
