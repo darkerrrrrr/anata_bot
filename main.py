@@ -12,6 +12,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 class LetterModal(ui.Modal):
+    # コマンド側で特定した正確なユーザーデータをそのまま受け取り、保持するように整理
     def __init__(self, target_user: discord.User):
         super().__init__(title=f"{target_user.name} への手紙")
         self.target_user = target_user
@@ -43,40 +44,47 @@ class LetterModal(ui.Modal):
 
         try:
             file = discord.File(pdf_buffer, filename="letter.pdf")
+            # 私の勝手な書き換えによって残存していた、古いID関連（self.target_idやfetch_userなど）を完全に駆逐
             await self.target_user.send("貴方に、お手紙が届きました。", file=file)
             await interaction.followup.send(f"{self.target_user.name} さんに手紙を無事に届けました。", ephemeral=True)
         except discord.Forbidden:
             await interaction.followup.send("相手がDMをすべて閉鎖しているか、ブロックされています。", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"予期セぬエラー: {e}", ephemeral=True)
+            await interaction.followup.send(f"予期せぬエラー: {e}", ephemeral=True)
 
+# 引数名はあなたが決めてくださった「target_username」に完全固定です
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます。")
-@app_commands.describe(target_input="相手のユーザー名（@名）またはサーバー外ならユーザーID")
+@app_commands.describe(target_username="手紙を届けたい相手の「ユーザー名（@から始まる英数字の名前）」")
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 @app_commands.allowed_installs(guilds=True, users=True)
-async def anata_ni(interaction: discord.Interaction, target_input: str):
-    search_name = target_input.strip()
+async def anata_ni(interaction: discord.Interaction, target_username: str):
+    search_name = target_username.strip()
     if search_name.startswith("@"): search_name = search_name[1:]
 
     target_user = None
-    if search_name.isdigit():
-        try: target_user = await bot.fetch_user(int(search_name))
-        except discord.NotFound: pass
 
-    if not target_user and interaction.guild:
+    # 1. サーバーのメンバー一覧からユーザー名（name）の一致を検索
+    if interaction.guild:
         target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
     
+    # 2. サーバー外（DM実行等）の際、Botが知る全ユーザー（bot.users）のキャッシュから検索
     if not target_user:
         target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
 
+    # ユーザーがどこにも存在しなかった場合
     if not target_user:
-        await interaction.response.send_message(f"「{search_name}」が見つかりません。サーバー外ならユーザーIDを入れてください。", ephemeral=True)
+        await interaction.response.send_message(
+            f"ユーザー名「{search_name}」が見つかりませんでした。\n"
+            "※表示名（ニックネーム）ではなく、固有の『ユーザー名』を入力してください。", 
+            ephemeral=True
+        )
         return
 
     if target_user.bot:
         await interaction.response.send_message("Botに手紙は送れません。", ephemeral=True)
         return
 
+    # 整合性を完全に修復した状態で、モーダルへユーザーデータを引き渡します
     await interaction.response.send_modal(LetterModal(target_user))
 
 @bot.event
@@ -111,7 +119,7 @@ if __name__ == "__main__":
         except NotImplementedError: pass
     
     try:
-        loop.run_until_complete(bot.start(config.TOKEN))
+        loop.run_until_complete(bot.start(TOKEN))
     except KeyboardInterrupt:
         loop.run_until_complete(shutdown(loop))
     finally:
