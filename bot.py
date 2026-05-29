@@ -78,8 +78,8 @@ class LetterModal(discord.ui.Modal, title='大切な想いを届けるレター'
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.members = True          # メンバー検索の権限をON
-        intents.message_content = True  # !msgdel の発言内容を読み取る権限をON
+        intents.members = True          # メンバー検索
+        intents.message_content = True  # !msgdel コマンドの読み取り
         
         super().__init__(command_prefix="!", intents=intents)
 
@@ -93,28 +93,20 @@ bot = MyBot()
 async def send_command(interaction: discord.Interaction):
     await interaction.response.send_modal(LetterModal())
 
-# !msgdel コマンドの登録
+# 🛠️ 【無駄を完全排除】!msgdel コマンドの登録
 @bot.command(name="msgdel")
-async def msgdel_command(ctx, limit: int = 100):
-    """【全員実行可能】この「貴方の想い」Bot自身のメッセージだけを探して削除します"""
-    deleted_count = 0
+async def msgdel_command(ctx, limit: int = 20):
+    """【案内メッセージ送信なし】過去ログからこのBotのメッセージだけを見つけて静かに削除します"""
     
-    # 処理中であることを伝えるメッセージ（これも「貴方の想い」Botの発言です）
-    status_msg = await ctx.send("Botのメッセージを削除中...")
-    
-    # チャンネルの過去ログを取得（デフォルト100件）
+    # 💡 サーバーでもDMでも、コマンドが打たれた場所の過去履歴を取得する
     async for message in ctx.channel.history(limit=limit):
-        # 💡 ここがポイント：メッセージの送信者が「このBot自身（bot.user）」の時だけ削除します
-        if message.author == bot.user and message.id != status_msg.id:
+        # 💡 送信者がこのBot自身（bot.user）である場合のみ削除を実行
+        if message.author == bot.user:
             try:
+                # 自分のメッセージを消すだけなので、実行者の権限にかかわらず100%成功します
                 await message.delete()
-                deleted_count += 1
-            except discord.Forbidden:
-                pass # 権限不足のエラーは無視する
-                
-    # 完了報告をして、その報告メッセージも自動で3秒後に消します
-    await status_msg.edit(content=f"「貴方の想い」Botのメッセージを {deleted_count} 件削除しました。")
-    await status_msg.delete(delay=3) # 3秒後に自動削除
+            except discord.DiscordException:
+                pass
 
 @bot.event
 async def on_ready():
