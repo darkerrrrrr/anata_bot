@@ -51,20 +51,21 @@ class LetterModal(discord.ui.Modal, title='大切な想いを届けるレター'
             return
 
         try:
-            # テキストファイルの中身を作る
+            # チャット欄に表示する案内の文章（txtファイルには入れない）
             if self.anonymous_option.value == '名前':
-                header = f"【差出人: {interaction.user.name} さんより、大切な想いが届いています】\n\n"
+                chat_message = f"【差出人: {interaction.user.name} さんより、大切な想いが届いています】"
             else:
-                header = f"【どなたかから、あなたへ大切な想いが届いています】\n\n"
+                chat_message = "【どなたかから、あなたへ大切な想いが届いています】"
                 
-            full_message = header + self.letter_content.value
+            # txtファイルの中身はユーザーが打った純粋な本文だけにする
+            pure_content = self.letter_content.value
             
             # メモリー上にテキストファイル（.txt）を作成
-            file_data = io.BytesIO(full_message.encode('utf-8'))
+            file_data = io.BytesIO(pure_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
-            # 相手のDMに送信する
-            await target_user.send("あなた宛てにメッセージが届きました。", file=discord_file)
+            # 相手のDMに、案内メッセージとファイルを一緒に送信する
+            await target_user.send(content=chat_message, file=discord_file)
             
             # 送信した本人に完了報告
             await interaction.followup.send(f"無事に {target_user.name} さんのDMへ想いを届けました！", ephemeral=True)
@@ -93,17 +94,23 @@ bot = MyBot()
 async def send_command(interaction: discord.Interaction):
     await interaction.response.send_modal(LetterModal())
 
-# 🛠️ 【無駄を完全排除】!msgdel コマンドの登録
+# 🛠️ 【さらに改良】!msgdel コマンドの登録（打たれたコマンド自体も消去）
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """【案内メッセージ送信なし】過去ログからこのBotのメッセージだけを見つけて静かに削除します"""
+    """過去ログからこのBotのメッセージを見つけて消去し、打たれた !msgdel も一緒に消します"""
     
-    # 💡 サーバーでもDMでも、コマンドが打たれた場所の過去履歴を取得する
-    async for message in ctx.channel.history(limit=limit):
-        # 💡 送信者がこのBot自身（bot.user）である場合のみ削除を実行
+    # 💡 【追加】ユーザーが送信した「!msgdel」というメッセージ自体をまず最初に消す
+    # （※DM画面や、Botに権限がないサーバーではスキップされるよう、try-exceptで囲んでいます）
+    try:
+        await ctx.message.delete()
+    except discord.DiscordException:
+        pass
+
+    # 過去ログを遡ってBotのメッセージを消す処理
+    async_history = ctx.channel.history(limit=limit)
+    async for message in async_history:
         if message.author == bot.user:
             try:
-                # 自分のメッセージを消すだけなので、実行者の権限にかかわらず100%成功します
                 await message.delete()
             except discord.DiscordException:
                 pass
