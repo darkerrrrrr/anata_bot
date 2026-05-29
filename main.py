@@ -173,25 +173,40 @@ class LetterModal(ui.Modal):
 # ----------------------------------------------------
 # 3. アプリケーションコマンドの登録
 # ----------------------------------------------------
+# 💡 サーバー外（DMや別空間）からでもアプリをインストール・実行できるように許可を与える設定
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます。")
 @app_commands.describe(target_username="手紙を届けたい相手の「ユーザー名（@から始まる英数字の名前）」")
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)  # コマンド実行可能範囲を最大化
+@app_commands.allowed_installs(guilds=True, users=True)  # ユーザー自身のプロフィールへの追加を許可
 async def anata_ni(interaction: discord.Interaction, target_username: str):
     search_name = target_username.strip()
     
     if search_name.startswith("@"):
         search_name = search_name[1:]
 
+    # 1. まず現在のサーバー（存在すれば）のメンバーから探す
     target_user = None
     if interaction.guild:
         target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
     
+    # 2. サーバー内で見つからない場合は、Botが知っている全ユーザー（bot.users）から探す
     if not target_user:
         target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
 
+    # 3. 💡 それでも見つからない場合（完全にサーバー外の人）
+    # API制限により名前だけでは取得できないため、相手の「ユーザーID（数字）」を直打ちしても動くようにフォールバック（救済措置）を用意
+    if not target_user and search_name.isdigit():
+        try:
+            target_user = await bot.fetch_user(int(search_name))
+        except discord.NotFound:
+            pass
+
     if not target_user:
         await interaction.response.send_message(
-            f"ユーザー名「{search_name}」が見つかりませんでした。\n"
-            "※Botと共通のサーバーに参加しているメンバーの「ユーザー名」を正確に入力してください。", 
+            f"ユーザー名「{search_name}」のアカウントを特定できませんでした。\n"
+            "【解決策】\n"
+            "①相手とBotが「共通のサーバー」に1つも入っていない場合、名前検索は使えません。\n"
+            "②サーバー外の相手に送りたい場合は、ユーザー名ではなく相手の「**ユーザーID（数字の羅列）**」をここに入力してください。", 
             ephemeral=True
         )
         return
@@ -258,16 +273,3 @@ def setup_signal_handlers(loop):
 # ----------------------------------------------------
 # 5. 実行エントリーポイント
 # ----------------------------------------------------
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    setup_signal_handlers(loop)
-    
-    try:
-        # ステータス変更のコードを除去し、通常のオンライン起動（緑丸）に直しました
-        loop.run_until_complete(bot.start(TOKEN))
-    except KeyboardInterrupt:
-        print("Ctrl+C を検知しました。終了処理を行います...")
-        loop.run_until_complete(shutdown(loop))
-    finally:
-        loop.close()
-        print("Botが完全に停止しました。")
