@@ -20,7 +20,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True  # メンバー一覧を取得するために必要
+intents.members = True 
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -164,7 +164,7 @@ class LetterModal(ui.Modal):
         except discord.Forbidden:
             await interaction.followup.send(
                 "相手に手紙を届けることができませんでした。\n"
-                "（理由：相手がDMを閉鎖している、またはBotをブロックしている可能性があります）",
+                "（理由：相手がDMをすべて閉鎖している、またはBotをブロックしている可能性があります）",
                 ephemeral=True
             )
         except Exception as e:
@@ -173,40 +173,39 @@ class LetterModal(ui.Modal):
 # ----------------------------------------------------
 # 3. アプリケーションコマンドの登録
 # ----------------------------------------------------
-# 💡 サーバー外（DMや別空間）からでもアプリをインストール・実行できるように許可を与える設定
+# 💡 サーバー内（Guild）とDM環境（BotDm、PrivateChannels）のすべてで動くように枠組みを拡張
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます。")
-@app_commands.describe(target_username="手紙を届けたい相手の「ユーザー名（@から始まる英数字の名前）」")
-@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)  # コマンド実行可能範囲を最大化
-@app_commands.allowed_installs(guilds=True, users=True)  # ユーザー自身のプロフィールへの追加を許可
-async def anata_ni(interaction: discord.Interaction, target_username: str):
-    search_name = target_username.strip()
+@app_commands.describe(target_input="相手の「ユーザー名（@名）」またはサーバー外なら「ユーザーID（数字の羅列）」")
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+@app_commands.allowed_installs(guilds=True, users=True)
+async def anata_ni(interaction: discord.Interaction, target_input: str):
+    search_name = target_input.strip()
     
     if search_name.startswith("@"):
         search_name = search_name[1:]
 
-    # 1. まず現在のサーバー（存在すれば）のメンバーから探す
     target_user = None
-    if interaction.guild:
-        target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
-    
-    # 2. サーバー内で見つからない場合は、Botが知っている全ユーザー（bot.users）から探す
-    if not target_user:
-        target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
 
-    # 3. 💡 それでも見つからない場合（完全にサーバー外の人）
-    # API制限により名前だけでは取得できないため、相手の「ユーザーID（数字）」を直打ちしても動くようにフォールバック（救済措置）を用意
-    if not target_user and search_name.isdigit():
+    # 1. 入力が「数字だけ（ID）」だった場合は、直接Discordの広大なDBからユーザーデータを無理やり引っこ抜く
+    if search_name.isdigit():
         try:
             target_user = await bot.fetch_user(int(search_name))
         except discord.NotFound:
             pass
 
+    # 2. IDで見つからず、かつサーバー内であれば、名前（英数字ユーザー名）からメンバーを探す
+    if not target_user and interaction.guild:
+        target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
+    
+    # 3. それでも見つからない場合は、Botのキャッシュ（bot.users）から名前で探す
+    if not target_user:
+        target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
+
+    # 最終的に特定できなかった場合
     if not target_user:
         await interaction.response.send_message(
-            f"ユーザー名「{search_name}」のアカウントを特定できませんでした。\n"
-            "【解決策】\n"
-            "①相手とBotが「共通のサーバー」に1つも入っていない場合、名前検索は使えません。\n"
-            "②サーバー外の相手に送りたい場合は、ユーザー名ではなく相手の「**ユーザーID（数字の羅列）**」をここに入力してください。", 
+            f"「{search_name}」に一致するアカウントが見つかりませんでした。\n"
+            "【注意】サーバーに入っていない外部の相手に送る場合は、名前ではなく相手の『ユーザーID（17〜19桁の数字）』を入力してください。", 
             ephemeral=True
         )
         return
@@ -273,3 +272,9 @@ def setup_signal_handlers(loop):
 # ----------------------------------------------------
 # 5. 実行エントリーポイント
 # ----------------------------------------------------
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    setup_signal_handlers(loop)
+    
+    try:
+loop.run_until_complete(bot.start(TOKEN))except KeyboardInterrupt:print("Ctrl+C を検知しました。終了処理を行います...")loop.run_until_complete(shutdown(loop))finally:loop.close()print("Botが完全に停止しました。")
