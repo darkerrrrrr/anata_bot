@@ -1,9 +1,13 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
+import os
 import signal
 import asyncio
 import config
+
+# 💡 【修正箇所】消してしまっていたTOKENの定義を正しい場所に戻しました
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -12,7 +16,6 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 class LetterModal(ui.Modal):
-    # コマンド側で特定した正確なユーザーデータをそのまま受け取り、保持するように整理
     def __init__(self, target_user: discord.User):
         super().__init__(title=f"{target_user.name} への手紙")
         self.target_user = target_user
@@ -44,7 +47,6 @@ class LetterModal(ui.Modal):
 
         try:
             file = discord.File(pdf_buffer, filename="letter.pdf")
-            # 私の勝手な書き換えによって残存していた、古いID関連（self.target_idやfetch_userなど）を完全に駆逐
             await self.target_user.send("貴方に、お手紙が届きました。", file=file)
             await interaction.followup.send(f"{self.target_user.name} さんに手紙を無事に届けました。", ephemeral=True)
         except discord.Forbidden:
@@ -52,7 +54,6 @@ class LetterModal(ui.Modal):
         except Exception as e:
             await interaction.followup.send(f"予期せぬエラー: {e}", ephemeral=True)
 
-# 引数名はあなたが決めてくださった「target_username」に完全固定です
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます。")
 @app_commands.describe(target_username="手紙を届けたい相手の「ユーザー名（@から始まる英数字の名前）」")
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -63,15 +64,12 @@ async def anata_ni(interaction: discord.Interaction, target_username: str):
 
     target_user = None
 
-    # 1. サーバーのメンバー一覧からユーザー名（name）の一致を検索
     if interaction.guild:
         target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
     
-    # 2. サーバー外（DM実行等）の際、Botが知る全ユーザー（bot.users）のキャッシュから検索
     if not target_user:
         target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
 
-    # ユーザーがどこにも存在しなかった場合
     if not target_user:
         await interaction.response.send_message(
             f"ユーザー名「{search_name}」が見つかりませんでした。\n"
@@ -84,7 +82,6 @@ async def anata_ni(interaction: discord.Interaction, target_username: str):
         await interaction.response.send_message("Botに手紙は送れません。", ephemeral=True)
         return
 
-    # 整合性を完全に修復した状態で、モーダルへユーザーデータを引き渡します
     await interaction.response.send_modal(LetterModal(target_user))
 
 @bot.event
