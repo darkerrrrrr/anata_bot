@@ -9,9 +9,6 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-# トークンの読み込み
-TOKEN = os.getenv("DISCORD_TOKEN")
-
 # フォントの登録
 font_path = os.path.join("font", "ShipporiMincho-Regular.ttf")
 pdfmetrics.registerFont(TTFont("ShipporiMincho", font_path))
