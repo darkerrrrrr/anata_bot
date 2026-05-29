@@ -6,27 +6,27 @@ import io
 
 # ─── 3. メッセージ削除後に表示される「セルフお掃除ボタン」 ───
 class UserMessageDeleteView(discord.ui.View):
-    def __init__(self, user_msg_id: int):
+    def __init__(self, user_msg: discord.Message):
         super().__init__(timeout=60) # 1分経ったら自動でボタンを無効化します
-        self.user_msg_id = user_msg_id
+        self.user_msg = user_msg
 
     # 「打ったコマンドの文字を消す」ボタン
     @discord.ui.button(label="自分の「!msgdel」の文字も消す", style=discord.ButtonStyle.danger, emoji="🧹")
     async def delete_user_message(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # コマンドを打った本人しかボタンを押せないようにする安全策
-        if interaction.user.id != interaction.message.reference.cached_message.author.id:
-            await interaction.response.send_message("❌ 他人のコマンドは消せません。", ephemeral=True)
-            return
+        # 💡 【バグ修正】最初に「処理を受け付けました」という返答（レスポンス）を確定させます
+        await interaction.response.defer(ephemeral=True)
 
+        # 💡 【DM対応】fetch_messageを使わず、事前に受け取ったメッセージオブジェクトから直接削除
         try:
-            # 💡 ユーザー自身がこのボタンを押すことで、権限不要で自分の「!msgdel」を100%消去できます
-            user_msg = await interaction.channel.fetch_message(self.user_msg_id)
-            await user_msg.delete()
+            await self.user_msg.delete()
         except discord.DiscordException:
             pass
 
-        # 役目を終えたので、この案内ボタン自体も静かに消滅させます
-        await interaction.message.delete()
+        # 役目を終えたので、この案内ボタンが付いたBot自身のメッセージも完全に消滅させます
+        try:
+            await interaction.message.delete()
+        except discord.DiscordException:
+            pass
 
 # ─── 2. ボタンを押した後に開く「メッセージ入力画面」 ───
 class LetterModal(discord.ui.Modal):
@@ -108,7 +108,7 @@ class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.members = True          # メンバー検索
-        intents.message_content = True  # 【必須】!msgdel テキストコマンドを読み取るため復活
+        intents.message_content = True  # !msgdel テキストコマンドを読み取るためON
         
         super().__init__(command_prefix="!", intents=intents)
 
@@ -126,12 +126,12 @@ async def send_command(interaction: discord.Interaction):
         ephemeral=True
     )
 
-# 🛠️ 【ご要望通り復活！】!msgdel テキストコマンドの登録
+# 🛠️ !msgdel テキストコマンドの登録
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
     """一般ユーザー誰でも実行可能：DMでもサーバーでも権限不要で痕跡を消し去る仕組み"""
     
-    # 💡 もしBotに「メッセージの管理権限」があれば、その場でユーザーの「!msgdel」を即座に消します
+    # もしBotに「メッセージの管理権限」があれば、その場でユーザーの「!msgdel」を即座に消します
     try:
         await ctx.message.delete()
         user_msg_deleted = True
@@ -147,14 +147,12 @@ async def msgdel_command(ctx, limit: int = 20):
             except discord.DiscordException:
                 pass
 
-    # 💡 【ここが今回の裏技】
-    # 権限がなくてユーザーの「!msgdel」の文字が残ってしまっている場合のみ、
-    # ユーザー自身にワンタップで消してもらうための「赤いお掃除ボタン」を目の前に出します。
+    # 💡 権限がなくてユーザーの「!msgdel」の文字が残ってしまっている場合のみ、
+    # 修正された新しい「お掃除ボタン」を目の前に出します（メッセージそのものを引き渡します）。
     if not user_msg_deleted:
         await ctx.send(
-            "お掃除が完了しました。Discordのルール上、あなたの打った「!msgdel」の文字はBotの権限では消せません。下のボタンを押して、あなた自身の力で消去してください：", 
-            view=UserMessageDeleteView(ctx.message.id),
-            reference=ctx.message # コマンドとボタンを紐付けます
+            "お掃除が完了しました。下のボタンを押して、あなたの「!msgdel」の文字を完全に消去してください：", 
+            view=UserMessageDeleteView(ctx.message)
         )
 
 @bot.event
