@@ -173,7 +173,6 @@ class LetterModal(ui.Modal):
 # ----------------------------------------------------
 # 3. アプリケーションコマンドの登録
 # ----------------------------------------------------
-# 💡 サーバー内（Guild）とDM環境（BotDm、PrivateChannels）のすべてで動くように枠組みを拡張
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます。")
 @app_commands.describe(target_input="相手の「ユーザー名（@名）」またはサーバー外なら「ユーザーID（数字の羅列）」")
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -186,26 +185,25 @@ async def anata_ni(interaction: discord.Interaction, target_input: str):
 
     target_user = None
 
-    # 1. 入力が「数字だけ（ID）」だった場合は、直接Discordの広大なDBからユーザーデータを無理やり引っこ抜く
+    # 1. 入力が数字（ID）なら、直接Discordデータベースから特定
     if search_name.isdigit():
         try:
             target_user = await bot.fetch_user(int(search_name))
         except discord.NotFound:
             pass
 
-    # 2. IDで見つからず、かつサーバー内であれば、名前（英数字ユーザー名）からメンバーを探す
+    # 2. ID以外なら、現在のサーバーメンバーから名前で探す
     if not target_user and interaction.guild:
         target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
     
-    # 3. それでも見つからない場合は、Botのキャッシュ（bot.users）から名前で探す
+    # 3. それでもいなければBot全体のキャッシュから探す
     if not target_user:
         target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
 
-    # 最終的に特定できなかった場合
     if not target_user:
         await interaction.response.send_message(
             f"「{search_name}」に一致するアカウントが見つかりませんでした。\n"
-            "【注意】サーバーに入っていない外部の相手に送る場合は、名前ではなく相手の『ユーザーID（17〜19桁の数字）』を入力してください。", 
+            "【注意】サーバーに入っていない外部の相手に送る場合は、名前ではなく相手の『ユーザーID（数字の羅列）』を入力してください。", 
             ephemeral=True
         )
         return
@@ -277,4 +275,9 @@ if __name__ == "__main__":
     setup_signal_handlers(loop)
     
     try:
-loop.run_until_complete(bot.start(TOKEN))except KeyboardInterrupt:print("Ctrl+C を検知しました。終了処理を行います...")loop.run_until_complete(shutdown(loop))finally:loop.close()print("Botが完全に停止しました。")
+        # 正しいインデントと改行に修正しました
+        loop.run_until_complete(bot.start(TOKEN))
+    except KeyboardInterrupt:
+        print("Ctrl+C を検知しました。終了処理を行います...")
+        loop.run_until_complete(shutdown(loop))
+finally:loop.close()print("Botが完全に停止しました。")
