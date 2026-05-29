@@ -173,7 +173,6 @@ class LetterModal(ui.Modal):
 # ----------------------------------------------------
 # 3. アプリケーションコマンドの登録
 # ----------------------------------------------------
-# contextsに「Guild(サーバー)」と「BotDm(DM)」の双方を許可する設定を追加
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます。")
 @app_commands.describe(target_username="手紙を届けたい相手の「ユーザー名（@から始まる英数字の名前）」")
 async def anata_ni(interaction: discord.Interaction, target_username: str):
@@ -182,17 +181,13 @@ async def anata_ni(interaction: discord.Interaction, target_username: str):
     if search_name.startswith("@"):
         search_name = search_name[1:]
 
-    # 【変更箇所】DM対応用ロジック
-    # 1. まず現在のサーバー（存在すれば）のメンバーから探す
     target_user = None
     if interaction.guild:
         target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
     
-    # 2. サーバー内で見つからない、またはDMで実行された場合は、Botが知っている全ユーザー（bot.users）から探す
     if not target_user:
         target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
 
-    # ユーザーが見つからない場合
     if not target_user:
         await interaction.response.send_message(
             f"ユーザー名「{search_name}」が見つかりませんでした。\n"
@@ -214,7 +209,6 @@ async def anata_ni(interaction: discord.Interaction, target_username: str):
 async def on_ready():
     print(f"Logged in as {bot.user.name} ({bot.user.id})")
     try:
-        # スラッシュコマンドをグローバルで同期（DMでも利用可能にするため）
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s).")
     except Exception as e:
@@ -269,7 +263,8 @@ if __name__ == "__main__":
     setup_signal_handlers(loop)
     
     try:
-        loop.run_until_complete(bot.start(TOKEN))
+        # 【変更箇所】statusにdiscord.Status.invisibleを設定し、常にオフライン状態として起動させます
+        loop.run_until_complete(bot.start(TOKEN, status=discord.Status.invisible))
     except KeyboardInterrupt:
         print("Ctrl+C を検知しました。終了処理を行います...")
         loop.run_until_complete(shutdown(loop))
