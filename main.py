@@ -8,9 +8,8 @@ import config
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True 
+# 💡 【バラバラを防ぐ修正】config.py側で定義されたインテント設定を正しく受け取ります
+intents = config.intents
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -42,14 +41,14 @@ class LetterModal(ui.Modal):
             await interaction.followup.send(f"【便箋からはみ出しています】あと約 {lines - 20} 行分削ってください。", ephemeral=True)
             return
 
-        # PDFの生成データを取得
+        # 💡 【結合の修正】config側の正しい関数名（generate_letter_pdf）で呼び出します
         pdf_buffer = config.generate_letter_pdf(target_name, sender_name, content)
 
         try:
             # 💡 正しい読み込み位置になったバッファを discord.File に渡して送信します
             file = discord.File(pdf_buffer, filename="letter.pdf")
             await self.target_user.send("貴方に、お手紙が届きました。", file=file)
-            await interaction.followup.send(f"{self.self.target_user.name} さんに手紙を無事に届けました。", ephemeral=True)
+            await interaction.followup.send(f"{self.target_user.name} さんに手紙を無事に届けました。", ephemeral=True)
         except discord.Forbidden:
             await interaction.followup.send("相手がDMをすべて閉鎖しているか、ブロックされています。", ephemeral=True)
         except Exception as e:
@@ -66,7 +65,6 @@ async def anata_ni(interaction: discord.Interaction, target_username: str):
     target_user = None
 
     if interaction.guild:
-        # 💡 キャッシュに依存しない確実なユーザー取得方法に修正しました（他は一切変更していません）
         target_user = interaction.guild.get_member_named(search_name)
     
     if not target_user:
