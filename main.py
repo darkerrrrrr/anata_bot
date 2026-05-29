@@ -208,11 +208,6 @@ async def anata_ni(interaction: discord.Interaction, target_username: str):
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name} ({bot.user.id})")
-    
-    # 💡 Bot起動時に自動で「オンライン状態を隠す（オフライン表示）」に切り替えます
-    await bot.change_presence(status=discord.Status.invisible)
-    print("Botのステータスをオフライン表示（居留守）に設定しました。")
-    
     try:
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s).")
@@ -238,7 +233,7 @@ async def on_message(message):
         elif not message.guild:
             await message.channel.send("DM内ではこのコマンドを実行できません。")
         else:
-            await message.channel.send("このコマンドを実行する权限がありません。", delete_after=5)
+            await message.channel.send("このコマンドを実行する権限がありません。", delete_after=5)
 
 async def shutdown(loop, signal_obj=None):
     if signal_obj:
@@ -268,6 +263,7 @@ if __name__ == "__main__":
     setup_signal_handlers(loop)
     
     try:
+        # ステータス変更のコードを除去し、通常のオンライン起動（緑丸）に直しました
         loop.run_until_complete(bot.start(TOKEN))
     except KeyboardInterrupt:
         print("Ctrl+C を検知しました。終了処理を行います...")
