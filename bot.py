@@ -4,8 +4,6 @@ from discord import app_commands
 from discord.ext import commands
 import io
 
-# ─── 1. 最初から順番に読み込めるように、クラスの定義をすべて上部に配置します ───
-
 # 【メッセージ入力画面（モーダル）の定義】
 class LetterModal(discord.ui.Modal):
     def __init__(self, is_anonymous: bool):
@@ -85,12 +83,12 @@ class SelectModeView(discord.ui.View):
     async def anonymous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LetterModal(is_anonymous=True))
 
-    @discord.ui.button(label="名前を出して送る", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="名前を出して送る", style=success_button_style := discord.ButtonStyle.success)
     async def name_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LetterModal(is_anonymous=False))
 
 
-# ─── 2. クラスの準備が終わったあとに、Botの本体設定を行います ───
+# ─── Botの本体設定 ───
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -105,7 +103,7 @@ class MyBot(commands.Bot):
 bot = MyBot()
 
 
-# 🚀 /send コマンドの登録（事前に定義した SelectModeView を安全に呼び出せるようになりました）
+# 🚀 /send コマンドの登録
 @bot.tree.command(name="send", description="大切な人へメッセージをテキストファイルにして届けます")
 async def send_command(interaction: discord.Interaction):
     await interaction.response.send_message(
@@ -115,16 +113,14 @@ async def send_command(interaction: discord.Interaction):
     )
 
 
-# 🛠️ !msgdel テキストコマンドの登録
+# 🛠️ !msgdel テキストコマンドの登録（余計な返信やスタンプを完全排除）
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """一般ユーザー誰でも実行可能：過去ログからBotのメッセージだけを静かに全消去します"""
+    """一般ユーザー誰でも実行可能：過去ログからBotのメッセージだけを無言で全消去します"""
     
     # もしサーバー側で「メッセージの管理権限」がBotにあれば、その場でユーザーの「!msgdel」を即座に消します
-    user_msg_deleted = False
     try:
         await ctx.message.delete()
-        user_msg_deleted = True
     except discord.DiscordException:
         pass
 
@@ -135,15 +131,9 @@ async def msgdel_command(ctx, limit: int = 20):
                 await message.delete()
             except discord.DiscordException:
                 pass
-
-    # 権限がないサーバーや、1対1のDM画面など、どうしてもあなたの「!msgdel」の文字が残ってしまう場合
-    if not user_msg_deleted:
-        try:
-            await ctx.message.add_reaction("🗑️")
-        except discord.DiscordException:
-            pass
-            
-        await ctx.send("🧹 お掃除が完了しました！上の「!msgdel」の文字は、メッセージ右側の『…』メニューから手動で削除してください。", delete_after=5)
+                
+    # 💡 リアクションやお掃除完了メッセージなどの無駄なコードはすべて削除しました。
+    # これにより、Botは何も喋らずにお片付けを終了します。
 
 
 @bot.event
