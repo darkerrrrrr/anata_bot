@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands, ui
 import signal
 import asyncio
-import config  # 上で作ったconfig.pyを読み込みます
+import config
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -11,7 +11,6 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 手紙入力画面（モーダル）
 class LetterModal(ui.Modal):
     def __init__(self, target_user: discord.User):
         super().__init__(title=f"{target_user.name} への手紙")
@@ -35,16 +34,13 @@ class LetterModal(ui.Modal):
         if not target_name.endswith("へ") and not target_name.endswith("へ "): target_name += " へ"
         if sender_name and not sender_name.endswith("より") and not sender_name.endswith("より "): sender_name += " より"
 
-        # 行数チェック（裏方ファイルを呼び出し）
         lines = config.check_letter_length(content)
         if lines > 20:
             await interaction.followup.send(f"【便箋からはみ出しています】あと約 {lines - 20} 行分削ってください。", ephemeral=True)
             return
 
-        # PDF生成（裏方ファイルを呼び出し）
         pdf_buffer = config.generate_letter_pdf(target_name, sender_name, content)
 
-        # 送信
         try:
             file = discord.File(pdf_buffer, filename="letter.pdf")
             await self.target_user.send("貴方に、お手紙が届きました。", file=file)
@@ -52,9 +48,8 @@ class LetterModal(ui.Modal):
         except discord.Forbidden:
             await interaction.followup.send("相手がDMをすべて閉鎖しているか、ブロックされています。", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"予期せぬエラー: {e}", ephemeral=True)
+            await interaction.followup.send(f"予期セぬエラー: {e}", ephemeral=True)
 
-# コマンド登録
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます。")
 @app_commands.describe(target_input="相手のユーザー名（@名）またはサーバー外ならユーザーID")
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -64,16 +59,13 @@ async def anata_ni(interaction: discord.Interaction, target_input: str):
     if search_name.startswith("@"): search_name = search_name[1:]
 
     target_user = None
-    # 1. ID検索
     if search_name.isdigit():
         try: target_user = await bot.fetch_user(int(search_name))
         except discord.NotFound: pass
 
-    # 2. サーバー内検索
     if not target_user and interaction.guild:
         target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
     
-    # 3. キャッシュ検索
     if not target_user:
         target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
 
@@ -87,7 +79,6 @@ async def anata_ni(interaction: discord.Interaction, target_input: str):
 
     await interaction.response.send_modal(LetterModal(target_user))
 
-# ライフサイクル管理
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name}")
@@ -119,6 +110,9 @@ if __name__ == "__main__":
         try: loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown(loop, s)))
         except NotImplementedError: pass
     
-    try: loop.run_until_complete(bot.start(config.TOKEN))
-    except KeyboardInterrupt: loop.run_until_complete(shutdown(loop))
-    finally: loop.close()
+    try:
+        loop.run_until_complete(bot.start(config.TOKEN))
+    except KeyboardInterrupt:
+        loop.run_until_complete(shutdown(loop))
+    finally:
+        loop.close()
