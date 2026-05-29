@@ -6,7 +6,6 @@ import signal
 import asyncio
 import config
 
-# 💡 【修正箇所】消してしまっていたTOKENの定義を正しい場所に戻しました
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
@@ -43,9 +42,11 @@ class LetterModal(ui.Modal):
             await interaction.followup.send(f"【便箋からはみ出しています】あと約 {lines - 20} 行分削ってください。", ephemeral=True)
             return
 
+        # PDFの生成データを取得
         pdf_buffer = config.generate_letter_pdf(target_name, sender_name, content)
 
         try:
+            # 💡 正しい読み込み位置になったバッファを discord.File に渡して送信します
             file = discord.File(pdf_buffer, filename="letter.pdf")
             await self.target_user.send("貴方に、お手紙が届きました。", file=file)
             await interaction.followup.send(f"{self.target_user.name} さんに手紙を無事に届けました。", ephemeral=True)
