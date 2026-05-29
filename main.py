@@ -20,7 +20,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True  # メンバー一覧から検索するために必要
+intents.members = True  # メンバー一覧を取得するために必要
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -46,7 +46,7 @@ def convert_emoji_to_twemoji(text: str) -> str:
 # 2. 手紙入力用モーダルの定義
 # ----------------------------------------------------
 class LetterModal(ui.Modal):
-    def __init__(self, target_user: discord.Member):
+    def __init__(self, target_user: discord.User):
         super().__init__(title=f"{target_user.name} への手紙")
         self.target_user = target_user
 
@@ -173,33 +173,30 @@ class LetterModal(ui.Modal):
 # ----------------------------------------------------
 # 3. アプリケーションコマンドの登録
 # ----------------------------------------------------
+# contextsに「Guild(サーバー)」と「BotDm(DM)」の双方を許可する設定を追加
 @bot.tree.command(name="貴方に", description="手紙（PDFファイル）を相手のDMに届けます。")
-@app_commands.describe(
-    target_username="手紙を届けたい相手の「ユーザー名（@から始まる英数字の名前）」"
-)
+@app_commands.describe(target_username="手紙を届けたい相手の「ユーザー名（@から始まる英数字の名前）」")
 async def anata_ni(interaction: discord.Interaction, target_username: str):
-    if not interaction.guild:
-        await interaction.response.send_message("このコマンドはサーバー内でのみ実行できます。", ephemeral=True)
-        return
-
-    # 入力されたテキストから前後の余分なスペースを排除
     search_name = target_username.strip()
     
-    # 💡 もし「@username」のように@を付けたまま入力されても動くように、先頭の@を自動で削る処理
     if search_name.startswith("@"):
         search_name = search_name[1:]
 
-    # 【変更箇所】「表示名（display_name）」の判定を削除し、「ユーザー名（name）」の完全一致のみに変更
-    target_user = discord.utils.find(
-        lambda m: m.name == search_name, 
-        interaction.guild.members
-    )
+    # 【変更箇所】DM対応用ロジック
+    # 1. まず現在のサーバー（存在すれば）のメンバーから探す
+    target_user = None
+    if interaction.guild:
+        target_user = discord.utils.find(lambda m: m.name == search_name, interaction.guild.members)
+    
+    # 2. サーバー内で見つからない、またはDMで実行された場合は、Botが知っている全ユーザー（bot.users）から探す
+    if not target_user:
+        target_user = discord.utils.find(lambda u: u.name == search_name, bot.users)
 
-    # 見つからない場合のエラー文面もユーザー名専用に変更
+    # ユーザーが見つからない場合
     if not target_user:
         await interaction.response.send_message(
-            f"ユーザー名が「{search_name}」のメンバーがこのサーバー内に見つかりませんでした。\n"
-            "※サーバー内の『表示名（ニックネーム）』ではなく、プロフィールに表示されている固有の『ユーザー名』を入力してください。", 
+            f"ユーザー名「{search_name}」が見つかりませんでした。\n"
+            "※Botと共通のサーバーに参加しているメンバーの「ユーザー名」を正確に入力してください。", 
             ephemeral=True
         )
         return
@@ -217,6 +214,7 @@ async def anata_ni(interaction: discord.Interaction, target_username: str):
 async def on_ready():
     print(f"Logged in as {bot.user.name} ({bot.user.id})")
     try:
+        # スラッシュコマンドをグローバルで同期（DMでも利用可能にするため）
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s).")
     except Exception as e:
@@ -228,7 +226,7 @@ async def on_message(message):
         return
 
     if message.content.startswith("!purge"):
-        if message.author.guild_permissions.manage_messages or message.author.id == bot.owner_id:
+        if message.guild and (message.author.guild_permissions.manage_messages or message.author.id == bot.owner_id):
             deleted = 0
             async for msg in message.channel.history(limit=100):
                 if msg.author == bot.user:
@@ -238,6 +236,8 @@ async def on_message(message):
                     except discord.HTTPException:
                         pass
             await message.channel.send(f"Botのメッセージを {deleted} 件削除しました。", delete_after=5)
+        elif not message.guild:
+            await message.channel.send("DM内ではこのコマンドを実行できません。")
         else:
             await message.channel.send("このコマンドを実行する権限がありません。", delete_after=5)
 
