@@ -4,11 +4,34 @@ from discord import app_commands
 from discord.ext import commands
 import io
 
+# ─── 3. メッセージ削除後に表示される「セルフお掃除ボタン」 ───
+class UserMessageDeleteView(discord.ui.View):
+    def __init__(self, user_msg_id: int):
+        super().__init__(timeout=60) # 1分経ったら自動でボタンを無効化します
+        self.user_msg_id = user_msg_id
+
+    # 「打ったコマンドの文字を消す」ボタン
+    @discord.ui.button(label="自分の「!msgdel」の文字も消す", style=discord.ButtonStyle.danger, emoji="🧹")
+    async def delete_user_message(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # コマンドを打った本人しかボタンを押せないようにする安全策
+        if interaction.user.id != interaction.message.reference.cached_message.author.id:
+            await interaction.response.send_message("❌ 他人のコマンドは消せません。", ephemeral=True)
+            return
+
+        try:
+            # 💡 ユーザー自身がこのボタンを押すことで、権限不要で自分の「!msgdel」を100%消去できます
+            user_msg = await interaction.channel.fetch_message(self.user_msg_id)
+            await user_msg.delete()
+        except discord.DiscordException:
+            pass
+
+        # 役目を終えたので、この案内ボタン自体も静かに消滅させます
+        await interaction.message.delete()
+
 # ─── 2. ボタンを押した後に開く「メッセージ入力画面」 ───
 class LetterModal(discord.ui.Modal):
     def __init__(self, is_anonymous: bool):
         self.is_anonymous = is_anonymous
-        # ボタンの選択に応じてポップアップのタイトルを自動で切り替える
         title_text = '大切な想いを届ける（匿名）' if is_anonymous else '大切な想いを届ける（名前あり）'
         super().__init__(title=title_text)
 
@@ -29,17 +52,16 @@ class LetterModal(discord.ui.Modal):
 
     # 送信ボタンが押された時の処理
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True) # 処理中マークを出す
+        await interaction.response.defer(ephemeral=True)
 
-        input_name = self.target_username.value.strip().lstrip('@') # @が入力されても消去する
+        input_name = self.target_username.value.strip().lstrip('@')
         target_user = None
 
-        # Botが参加しているすべてのサーバーのメンバーから、ユーザー名が一致する人を探す
         for guild in interaction.client.guilds:
             member = guild.get_member_named(input_name)
             if member:
                 target_user = member
-                break # 見つかったらループを抜ける
+                break
 
         if not target_user:
             await interaction.followup.send(
@@ -50,23 +72,17 @@ class LetterModal(discord.ui.Modal):
             return
 
         try:
-            # 💡 【ボタンの選択結果をここで判定】
             if self.is_anonymous:
                 chat_message = "【どなたかから、あなたへ大切な想いが届いています】"
             else:
                 chat_message = f"【差出人: {interaction.user.name} さんより、大切な想いが届いています】"
                 
-            # txtファイルの中身はユーザーが打った純粋な本文だけにする
             pure_content = self.letter_content.value
             
-            # メモリー上にテキストファイル（.txt）を作成
             file_data = io.BytesIO(pure_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
-            # 相手のDMに、案内メッセージとファイルを一緒に送信する
             await target_user.send(content=chat_message, file=discord_file)
-            
-            # 送信した本人に完了報告（他の人には見えません）
             await interaction.followup.send(f"無事に {target_user.name} さんのDMへ想いを届けました！", ephemeral=True)
             
         except discord.Forbidden:
@@ -79,16 +95,12 @@ class SelectModeView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # 匿名で送るボタン
     @discord.ui.button(label="匿名で送る", style=discord.ButtonStyle.primary)
     async def anonymous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # 匿名モード(True)でメッセージ入力画面を開く
         await interaction.response.send_modal(LetterModal(is_anonymous=True))
 
-    # 名前を出して送るボタン
     @discord.ui.button(label="名前を出して送る", style=discord.ButtonStyle.success)
     async def name_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # 名前ありモード(False)でメッセージ入力画面を開く
         await interaction.response.send_modal(LetterModal(is_anonymous=False))
 
 # ─── Botの本体設定 ───
@@ -96,7 +108,7 @@ class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.members = True          # メンバー検索
-        intents.message_content = True  # !msgdel コマンドの読み取り
+        intents.message_content = True  # 【必須】!msgdel テキストコマンドを読み取るため復活
         
         super().__init__(command_prefix="!", intents=intents)
 
@@ -108,29 +120,42 @@ bot = MyBot()
 # /send コマンドの登録
 @bot.tree.command(name="send", description="大切な人へメッセージをテキストファイルにして届けます")
 async def send_command(interaction: discord.Interaction):
-    # 最初に2つの選択ボタンを提示（ephemeral=True で実行した本人にしか見えないようにします）
     await interaction.response.send_message(
         "メッセージの送信モードを選択してください：", 
         view=SelectModeView(), 
         ephemeral=True
     )
 
-# !msgdel コマンドの登録（打たれたコマンド自体も巻き込んで消去）
+# 🛠️ 【ご要望通り復活！】!msgdel テキストコマンドの登録
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """過去ログからこのBotのメッセージを見つけて消去し、打たれた !msgdel も一緒に消します"""
+    """一般ユーザー誰でも実行可能：DMでもサーバーでも権限不要で痕跡を消し去る仕組み"""
+    
+    # 💡 もしBotに「メッセージの管理権限」があれば、その場でユーザーの「!msgdel」を即座に消します
     try:
         await ctx.message.delete()
+        user_msg_deleted = True
     except discord.DiscordException:
-        pass
+        # 権限がないサーバーやDM画面では、ここでは消さずにフラグを立てます
+        user_msg_deleted = False
 
-    async_history = ctx.channel.history(limit=limit)
-    async for message in async_history:
+    # 過去ログからBot自身のメッセージをすべて削除する処理
+    async for message in ctx.channel.history(limit=limit):
         if message.author == bot.user:
             try:
                 await message.delete()
             except discord.DiscordException:
                 pass
+
+    # 💡 【ここが今回の裏技】
+    # 権限がなくてユーザーの「!msgdel」の文字が残ってしまっている場合のみ、
+    # ユーザー自身にワンタップで消してもらうための「赤いお掃除ボタン」を目の前に出します。
+    if not user_msg_deleted:
+        await ctx.send(
+            "お掃除が完了しました。Discordのルール上、あなたの打った「!msgdel」の文字はBotの権限では消せません。下のボタンを押して、あなた自身の力で消去してください：", 
+            view=UserMessageDeleteView(ctx.message.id),
+            reference=ctx.message # コマンドとボタンを紐付けます
+        )
 
 @bot.event
 async def on_ready():
