@@ -27,13 +27,11 @@ class LetterModal(discord.ui.Modal):
         self.add_item(self.letter_content)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # 💡 処理中の「考え中...」表示を相手に見せないよう silent=True を追加
         await interaction.response.defer(ephemeral=True, thinking=False)
 
         input_name = self.target_username.value.strip().lstrip('@')
         target_user = None
 
-        # 💡 サーバーを跨いだ全全メンバーから「ユーザー名」で最速検索（discord.utils.get を使用）
         for guild in interaction.client.guilds:
             member = discord.utils.get(guild.members, name=input_name)
             if member:
@@ -49,9 +47,9 @@ class LetterModal(discord.ui.Modal):
             return
 
         try:
-            # 💡 三項演算子で条件分岐を限界までシンプルに圧縮
-            sender = "匿名さん" if self.is_anonymous else f"{interaction.user.name} さん"
-            chat_message = f"【{sender} より、大切な想いが届いています】"
+            # 💡 通常時の名前取得を display_name（表示名）に変更し、文言をご指定通りに修正
+            sender = "匿名" if self.is_anonymous else f"{interaction.user.display_name} さん"
+            chat_message = f"【{sender} より、貴方へ大切な想いが届いています】"
                 
             plain_text_content = self.letter_content.value
 
@@ -60,10 +58,10 @@ class LetterModal(discord.ui.Modal):
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
             await target_user.send(content=chat_message, file=discord_file)
-            await interaction.followup.send(f"✅ 送信完了：{target_user.name} さんのDMへ届けました。", ephemeral=True)
+            await interaction.followup.send(f"✅ 送信完了：{target_user.display_name} さんのDMへ届けました。", ephemeral=True)
             
         except discord.Forbidden:
-            await interaction.followup.send("❌ エラー：相手がDMを閉じて閉鎖しているため、送信できませんでした。", ephemeral=True)
+            await interaction.followup.send("❌ エラー：相手がDMを閉じているため、送信できませんでした。", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"⚠️ 予期せぬエラーが発生しました: {e}", ephemeral=True)
 
@@ -111,7 +109,6 @@ async def send_command(interaction: discord.Interaction):
 async def msgdel_command(ctx, limit: int = 20):
     """過去ログからこのBotのメッセージと、打たれたコマンドの文字自体を無言で高速一括削除します"""
     
-    # 💡 1メッセージずつ消すと重いため、一括削除（purge）でBot自身の投稿だけを狙い撃ちして超高速化
     def is_bot_or_cmd(m):
         return m.author == bot.user or m.id == ctx.message.id
 
