@@ -3,14 +3,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import io
-
-# ─── 1. 画面表示に使う部品（クラス）の定義 ───
+import asyncio
 
 # 【メッセージ入力画面（ポップアップ）】
 class LetterModal(discord.ui.Modal):
     def __init__(self, is_anonymous: bool):
         self.is_anonymous = is_anonymous
-        # 💡 モード名のみをシンプルに表示
         title_text = '送信設定：匿名（名前を隠す）' if is_anonymous else '送信設定：通常（名前を出す）'
         super().__init__(title=title_text)
 
@@ -29,14 +27,12 @@ class LetterModal(discord.ui.Modal):
         max_length=2000
     )
 
-    # 送信ボタンが押された時の処理
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
         input_name = self.target_username.value.strip().lstrip('@')
         target_user = None
 
-        # Botが参加しているすべてのサーバーのメンバーから、ユーザー名が一致する人を探す
         for guild in interaction.client.guilds:
             member = guild.get_member_named(input_name)
             if member:
@@ -52,17 +48,73 @@ class LetterModal(discord.ui.Modal):
             return
 
         try:
-            # 💡 相手への通知も「匿名」か「誰からか」だけが1秒で伝わる形に変更
             if self.is_anonymous:
                 chat_message = "【匿名メッセージが届きました】"
+                letter_title = "あなたへ、大切な想いが届いています"
             else:
                 chat_message = f"【{interaction.user.name} さんからのメッセージが届きました】"
+                letter_title = f"{interaction.user.name} さんより、大切な想いが届いています"
                 
-            pure_content = self.letter_content.value
+            # 💡 改行をブラウザで正しく表示するために、文章内の改行コードを「<br>」に変換します
+            formatted_content = self.letter_content.value.replace("\n", "<br>")
+
+            # 🛠️ 【新機能】無機質に広がらない、中央に収まる美しいHTML手紙のデザイン
+            html_template = f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Letter</title>
+    <style>
+        body {{
+            background-color: #f4f1ea; /* 優しい薄ベージュ色の背景 */
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }}
+        .card {{
+            background: #ffffff;
+            max-width: 500px; /* 💡 文字が横に広がらないように横幅を制限 */
+            width: 100%;
+            padding: 40px; /* 💡 上下左右にたっぷり余白をとって中央に寄せます */
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); /* ほんのり上品な影 */
+            border-radius: 8px;
+            box-sizing: border-box;
+        }}
+        .title {{
+            font-size: 16px;
+            font-weight: bold;
+            color: #555555;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+            text-align: center;
+        }}
+        .content {{
+            font-size: 15px;
+            line-height: 1.8; /* 行間を広げて読みやすくします */
+            color: #333333;
+            white-space: normal;
+            word-wrap: break-word;
+        }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="title">{letter_title}</div>
+        <div class="content">{formatted_content}</div>
+    </div>
+</body>
+</html>"""
             
-            # メモリー上にテキストファイル（.txt）を作成
-            file_data = io.BytesIO(pure_content.encode('utf-8'))
-            discord_file = discord.File(fp=file_data, filename="letter.txt")
+            # メモリー上にHTMLファイル（.html）を作成
+            file_data = io.BytesIO(html_template.encode('utf-8'))
+            # 💡 拡張子を「.html」に変更して添付します
+            discord_file = discord.File(fp=file_data, filename="letter.html")
             
             # 相手のDMに、案内メッセージとファイルを一緒に送信する
             await target_user.send(content=chat_message, file=discord_file)
@@ -81,7 +133,6 @@ class SelectModeView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # 💡 選択肢を無駄のない実用的なテキストに変更
     @discord.ui.button(label="匿名（名前を隠して送信）", style=discord.ButtonStyle.primary)
     async def anonymous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LetterModal(is_anonymous=True))
@@ -91,13 +142,12 @@ class SelectModeView(discord.ui.View):
         await interaction.response.send_modal(LetterModal(is_anonymous=False))
 
 
-# ─── 2. Botの本体設定 ───
+# ─── Botの本体設定 ───
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.members = True          # メンバー検索
-        intents.message_content = True  # !msgdel テキストコマンドを読み取るためON
-        
+        intents.members = True          
+        intents.message_content = True  
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
@@ -107,7 +157,7 @@ bot = MyBot()
 
 
 # 🚀 /send コマンドの登録
-@bot.tree.command(name="send", description="指定したユーザーのDMにテキストファイルを送信します")
+@bot.tree.command(name="send", description="指定したユーザーのDMにメッセージカード（HTML）を送信します")
 async def send_command(interaction: discord.Interaction):
     await interaction.response.send_message(
         "送信モードを選択してください：", 
@@ -116,21 +166,26 @@ async def send_command(interaction: discord.Interaction):
     )
 
 
-# 🛠️ !msgdel テキストコマンドの登録
+# 🛠️ !msgdel テキストコマンドの登録（変身・自爆システム）
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """過去ログからこのBotのメッセージだけを無言で全消去します"""
-    try:
-        await ctx.message.delete()
-    except discord.DiscordException:
-        pass
-
+    """過去ログからこのBotのメッセージを全消去し、打たれたコマンドの文字自体を5秒で自爆させます"""
+    
+    # 過去ログからBot自身のメッセージをすべて無言で削除する処理
     async for message in ctx.channel.history(limit=limit):
-        if message.author == bot.user:
+        if message.author == bot.user and message.id != ctx.message.id:
             try:
                 await message.delete()
             except discord.DiscordException:
                 pass
+
+    # あなたの打った「!msgdel」をお掃除メッセージに上書き（変身）させます
+    try:
+        await ctx.message.edit(content="🧹 お掃除が完了しました。このメッセージは5秒後に自動消滅します。")
+        await asyncio.sleep(5)
+        await ctx.message.delete()
+    except discord.DiscordException:
+        pass
 
 
 @bot.event
