@@ -1,5 +1,5 @@
-import sys
 import io
+import sys
 import discord
 from discord.ext import commands
 
@@ -51,46 +51,56 @@ class ReplyModal(discord.ui.Modal):
             await interaction.followup.send(f"⚠️ エラーが発生しました: {e}", ephemeral=True)
 
 
-# ─── 2. bot.py の送信処理（on_submit）の直後に割り込んで、線を繋ぐフック処理 ───
-# 💡 bot.py の処理が終わった後、この関数に処理が流れてきてボタンを上書き添付します
-def create_hook(original_on_submit):
-    async def hooked_on_submit(self, interaction: discord.Interaction):
-        # まずは本来の bot.py にある送信処理を実行させる（線を繋ぐ）
-        await original_on_submit(self, interaction)
+# ─── 2. bot.py の送信処理の「真ん中」に割り込んで、ボタンを強制合流させる処理 ───
+# 💡 bot.pyのコードは一切書き換えずに、送信する瞬間の線だけを奪い取ってボタンを仕込みます
+async def hooked_on_submit(self, interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True, thinking=False)
+
+    input_name = self.target_username.value.strip().lstrip('@')
+    target_user = None
+
+    for guild in interaction.client.guilds:
+        member = discord.utils.get(guild.members, name=input_name)
+        if member:
+            target_user = member
+            break
+
+    if not target_user:
+        await interaction.followup.send(
+            f"❌ エラー：「{input_name}」が見つかりませんでした。\n"
+            "※プロフィールの「ユーザー名（小文字の英数字）」を正確に入力してください。", 
+            ephemeral=True
+        )
+        return
+
+    try:
+        sender = "匿名" if self.is_anonymous else f"{interaction.user.display_name}さん"
+        chat_message = f"【{sender}より、大切な想いが届いています】"
+            
+        plain_text_content = self.letter_content.value
+
+        file_data = io.BytesIO(plain_text_content.encode('utf-8'))
+        discord_file = discord.File(fp=file_data, filename="letter.txt")
         
-        # 💡 bot.py の処理（送信）が終わった直後に、ここへ来ます
-        # 送信相手のユーザーを再取得し、最後に送られたメッセージへ返信ボタン（View）を強制合流させます
-        input_name = self.target_username.value.strip().lstrip('@')
-        target_user = None
-        for guild in interaction.client.guilds:
-            member = discord.utils.get(guild.members, name=input_name)
-            if member:
-                target_user = member
-                break
-                
-        if target_user:
-            try:
-                # 相手とのDM履歴から、直前にBotが送ったメッセージを特定
-                async for msg in target_user.history(limit=5):
-                    if msg.author == interaction.client.user:
-                        # 期限切れにならない返信ボタン（View）を後付けで合流
-                        view = ReceiveReplyView(original_sender_id=interaction.user.id)
-                        await msg.edit(view=view)
-                        break
-            except Exception:
-                pass
-                
-    return hooked_on_submit
+        # 💡 bot.py の送信タイミングを上書きし、返信用のViewボタン（ReceiveReplyView）をここで強制合流
+        view = ReceiveReplyView(original_sender_id=interaction.user.id)
+        await target_user.send(content=chat_message, file=discord_file, view=view)
+        
+        await interaction.followup.send(f"✅ 送信完了：{target_user.display_name}さんのDMへ届けました。", ephemeral=True)
+        
+    except discord.Forbidden:
+        await interaction.followup.send("❌ エラー：相手がDMを閉じているため、送信できませんでした。", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ 予期せぬエラーが発生しました: {e}", ephemeral=True)
 
 
-# ─── 3. プログラム実行時に自動で仕掛けを連動させる ───
+# ─── 3. プログラム実行時に自動で bot.py の処理をすり替える ───
 import bot as original_bot
 
-# bot.py に書かれている LetterModal の送信処理の「後ろ」に、run.py の処理を繋ぎ替える
-original_bot.LetterModal.on_submit = create_hook(original_bot.LetterModal.on_submit)
+# bot.py に書かれている LetterModal の送信処理そのものを、run.py のボタン機能付き処理に完全に入れ替えます
+original_bot.LetterModal.on_submit = hooked_on_submit
 
 
 # ─── 4. 起動処理の引き継ぎ ───
 if __name__ == '__main__':
-    # bot.py の起動シーケンスをそのまま実行
     pass
