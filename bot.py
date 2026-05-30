@@ -47,9 +47,9 @@ class LetterModal(discord.ui.Modal):
             return
 
         try:
-            # 💡 「さん」の後の半角スペースと「より」の前の半角スペースを完全に排除しました
+            # 💡 「貴方へ」を削除し、よりスマートな文面に変更しました
             sender = "匿名" if self.is_anonymous else f"{interaction.user.display_name}さん"
-            chat_message = f"【{sender}より、貴方へ大切な想いが届いています】"
+            chat_message = f"【{sender}より、大切な想いが届いています】"
                 
             plain_text_content = self.letter_content.value
 
