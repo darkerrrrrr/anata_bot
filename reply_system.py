@@ -37,7 +37,6 @@ class ReplyModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=False)
 
-        # 💡 Botの内部キャッシュからユーザーオブジェクトを確実に取得（get_user ➔ fetch_user の二段構え）
         target_user = interaction.client.get_user(self.original_sender_id)
         if not target_user:
             try:
@@ -55,7 +54,7 @@ class ReplyModal(discord.ui.Modal):
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="reply.txt")
             
-            # 返信されたメッセージにも再度返信ボタン（View）を確実に「最初からセット」して送ります
+            # 返信されたメッセージにも再度返信ボタン（View）を最初から混ぜて送信
             view = ReceiveReplyView(original_sender_id=interaction.user.id)
             await target_user.send(content=chat_message, file=discord_file, view=view)
             
@@ -97,8 +96,7 @@ async def hooked_on_submit(self, interaction: discord.Interaction):
         file_data = io.BytesIO(plain_text_content.encode('utf-8'))
         discord_file = discord.File(fp=file_data, filename="letter.txt")
         
-        # 💡 ここが最重要の修正点です
-        # 後付け編集（edit）ではなく、sendの瞬間に返信用のViewボタンを確実に引数（view=view）として混ぜて同時に送り出します
+        # 💡 後付け編集（edit）ではなく、sendの瞬間に返信用のViewボタンを確実に引数（view=view）として混ぜて同時に送り出します
         view = ReceiveReplyView(original_sender_id=interaction.user.id)
         await target_user.send(content=chat_message, file=discord_file, view=view)
         
@@ -111,7 +109,6 @@ async def hooked_on_submit(self, interaction: discord.Interaction):
 
 
 # ─── プログラム起動時に自動でbot.pyの送信処理をすり替える仕掛け ───
-# 💡 bot.pyが読み込まれた瞬間に、古い送信処理を上記の「最初からボタンを混ぜる処理」へ完全上書きします
 for mod_name, mod in list(sys.modules.items()):
     if mod and mod_name != __name__ and hasattr(mod, 'LetterModal'):
         mod.LetterModal.on_submit = hooked_on_submit
