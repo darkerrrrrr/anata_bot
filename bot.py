@@ -3,7 +3,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import io
-import asyncio
 
 # 【メッセージ入力画面（ポップアップ）】
 class LetterModal(discord.ui.Modal):
@@ -14,7 +13,7 @@ class LetterModal(discord.ui.Modal):
 
         self.target_username = discord.ui.TextInput(
             label='送信相手のユーザー名', 
-            placeholder='例: discord_user（@や表示名は不可、ユーザー名を入力）',
+            placeholder='例: discord_user（@や表示名は不可）',
             max_length=32
         )
         self.letter_content = discord.ui.TextInput(
@@ -28,47 +27,45 @@ class LetterModal(discord.ui.Modal):
         self.add_item(self.letter_content)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+        # 💡 処理中の「考え中...」表示を相手に見せないよう silent=True を追加
+        await interaction.response.defer(ephemeral=True, thinking=False)
 
         input_name = self.target_username.value.strip().lstrip('@')
         target_user = None
 
+        # 💡 サーバーを跨いだ全全メンバーから「ユーザー名」で最速検索（discord.utils.get を使用）
         for guild in interaction.client.guilds:
-            member = guild.get_member_named(input_name)
-            if not member:
-                member = discord.utils.get(guild.members, display_name=input_name)
+            member = discord.utils.get(guild.members, name=input_name)
             if member:
                 target_user = member
                 break
 
         if not target_user:
             await interaction.followup.send(
-                f"エラー：「{input_name}」というユーザーが見つかりませんでした。\n"
-                "※Botと同じサーバーに所属し、正確なユーザー名である必要があります。", 
+                f"❌ エラー：「{input_name}」が見つかりませんでした。\n"
+                "※プロフィールの「ユーザー名（小文字の英数字）」を正確に入力してください。", 
                 ephemeral=True
             )
             return
 
         try:
-            # 💡 条件分岐を整理し、通常時はチャットメッセージ側に見出しを統合
-            if self.is_anonymous:
-                chat_message = "【匿名メッセージが届きました】"
-                plain_text_content = f"【あなたへ、大切な想いが届いています】\n\n{self.letter_content.value}"
-            else:
-                chat_message = f"【{interaction.user.name} さんより、大切な想いが届いています】"
-                plain_text_content = self.letter_content.value
+            # 💡 三項演算子で条件分岐を限界までシンプルに圧縮
+            sender = "匿名さん" if self.is_anonymous else f"{interaction.user.name} さん"
+            chat_message = f"【{sender} より、大切な想いが届いています】"
                 
+            plain_text_content = self.letter_content.value
+
             # メモリー上にテキストファイル（.txt）を作成
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
             await target_user.send(content=chat_message, file=discord_file)
-            await interaction.followup.send(f"送信完了：{target_user.name} さんのDMへ届けました。", ephemeral=True)
+            await interaction.followup.send(f"✅ 送信完了：{target_user.name} さんのDMへ届けました。", ephemeral=True)
             
         except discord.Forbidden:
-            await interaction.followup.send("エラー：相手がDMを受信できない設定にしているため、送信できませんでした。", ephemeral=True)
+            await interaction.followup.send("❌ エラー：相手がDMを閉じて閉鎖しているため、送信できませんでした。", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"予期せぬエラーが発生しました: {e}", ephemeral=True)
+            await interaction.followup.send(f"⚠️ 予期せぬエラーが発生しました: {e}", ephemeral=True)
 
 
 # 【送信方法を選ぶボタン】
@@ -112,17 +109,14 @@ async def send_command(interaction: discord.Interaction):
 # 🛠️ !msgdel テキストコマンドの登録
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """過去ログからこのBotのメッセージを全消去し、打たれたコマンドの文字自体を削除します"""
+    """過去ログからこのBotのメッセージと、打たれたコマンドの文字自体を無言で高速一括削除します"""
     
-    async for message in ctx.channel.history(limit=limit):
-        if message.author == bot.user and message.id != ctx.message.id:
-            try:
-                await message.delete()
-            except discord.DiscordException:
-                pass
+    # 💡 1メッセージずつ消すと重いため、一括削除（purge）でBot自身の投稿だけを狙い撃ちして超高速化
+    def is_bot_or_cmd(m):
+        return m.author == bot.user or m.id == ctx.message.id
 
     try:
-        await ctx.message.delete()
+        await ctx.channel.purge(limit=limit, check=is_bot_or_cmd)
     except discord.DiscordException:
         pass
 
