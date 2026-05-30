@@ -1,5 +1,6 @@
 import discord
 import io
+from discord.ext import commands
 
 # ─── 返信入力用のポップアップ画面（Modal） ───
 class ReplyModal(discord.ui.Modal):
@@ -34,7 +35,6 @@ class ReplyModal(discord.ui.Modal):
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="reply.txt")
             
-            # 返信されたメッセージにもボタンを確実に添付
             view = ReceiveReplyView(original_sender_id=interaction.user.id)
             await target_user.send(content=chat_message, file=discord_file, view=view)
             
@@ -111,7 +111,6 @@ class LetterModal(discord.ui.Modal):
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
-            # 💡 最初の送信時にも、ここから確実に返信ボタン（view）を強制添付してDM送信します
             view = ReceiveReplyView(original_sender_id=interaction.user.id)
             await target_user.send(content=chat_message, file=discord_file, view=view)
             
@@ -135,3 +134,10 @@ class SelectModeView(discord.ui.View):
     @discord.ui.button(label="通常（名前を出して送信）", style=discord.ButtonStyle.success)
     async def name_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LetterModal(is_anonymous=False))
+
+
+# 💡 【重要】bot.py側がメインスクリプトから自動インポートされた際、
+# bot.pyの中にある古い「LetterModal」を、このファイルの返信機能付きに強制的に上書き差し替えします。
+import sys
+if 'bot' in sys.modules:
+    sys.modules['bot'].LetterModal = LetterModal
