@@ -12,20 +12,20 @@ class LetterModal(discord.ui.Modal):
         title_text = '送信設定：匿名（名前を隠す）' if is_anonymous else '送信設定：通常（名前を出す）'
         super().__init__(title=title_text)
 
-    # 届ける相手のユーザー名を入力する欄
-    target_username = discord.ui.TextInput(
-        label='送信相手のユーザー名', 
-        placeholder='例: discord_user（@は不要）',
-        max_length=32
-    )
-    
-    # メッセージ本文を入力する欄
-    letter_content = discord.ui.TextInput(
-        label='メッセージ本文', 
-        style=discord.TextStyle.long, 
-        placeholder='送信したい文章を入力してください...',
-        max_length=2000
-    )
+        self.target_username = discord.ui.TextInput(
+            label='送信相手のユーザー名', 
+            placeholder='例: discord_user（@や表示名は不可、ユーザー名を入力）',
+            max_length=32
+        )
+        self.letter_content = discord.ui.TextInput(
+            label='メッセージ本文', 
+            style=discord.TextStyle.long, 
+            placeholder='送信したい文章を入力してください...',
+            max_length=2000
+        )
+        
+        self.add_item(self.target_username)
+        self.add_item(self.letter_content)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -35,6 +35,8 @@ class LetterModal(discord.ui.Modal):
 
         for guild in interaction.client.guilds:
             member = guild.get_member_named(input_name)
+            if not member:
+                member = discord.utils.get(guild.members, display_name=input_name)
             if member:
                 target_user = member
                 break
@@ -42,7 +44,7 @@ class LetterModal(discord.ui.Modal):
         if not target_user:
             await interaction.followup.send(
                 f"エラー：「{input_name}」というユーザーが見つかりませんでした。\n"
-                "※Botと同じサーバーに所属しているユーザーのみ検索可能です。", 
+                "※Botと同じサーバーに所属し、正確なユーザー名である必要があります。", 
                 ephemeral=True
             )
             return
@@ -55,10 +57,8 @@ class LetterModal(discord.ui.Modal):
                 chat_message = f"【{interaction.user.name} さんからのメッセージが届きました】"
                 letter_title = f"{interaction.user.name} さんより、大切な想いが届いています"
                 
-            # 💡 改行をブラウザで正しく表示するために、文章内の改行コードを「<br>」に変換します
             formatted_content = self.letter_content.value.replace("\n", "<br>")
 
-            # 🛠️ 【新機能】無機質に広がらない、中央に収まる美しいHTML手紙のデザイン
             html_template = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -67,7 +67,7 @@ class LetterModal(discord.ui.Modal):
     <title>Letter</title>
     <style>
         body {{
-            background-color: #f4f1ea; /* 優しい薄ベージュ色の背景 */
+            background-color: #f4f1ea;
             font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
             display: flex;
             justify-content: center;
@@ -78,10 +78,10 @@ class LetterModal(discord.ui.Modal):
         }}
         .card {{
             background: #ffffff;
-            max-width: 500px; /* 💡 文字が横に広がらないように横幅を制限 */
+            max-width: 500px;
             width: 100%;
-            padding: 40px; /* 💡 上下左右にたっぷり余白をとって中央に寄せます */
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); /* ほんのり上品な影 */
+            padding: 40px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             border-radius: 8px;
             box-sizing: border-box;
         }}
@@ -96,7 +96,7 @@ class LetterModal(discord.ui.Modal):
         }}
         .content {{
             font-size: 15px;
-            line-height: 1.8; /* 行間を広げて読みやすくします */
+            line-height: 1.8;
             color: #333333;
             white-space: normal;
             word-wrap: break-word;
@@ -111,15 +111,10 @@ class LetterModal(discord.ui.Modal):
 </body>
 </html>"""
             
-            # メモリー上にHTMLファイル（.html）を作成
             file_data = io.BytesIO(html_template.encode('utf-8'))
-            # 💡 拡張子を「.html」に変更して添付します
             discord_file = discord.File(fp=file_data, filename="letter.html")
             
-            # 相手のDMに、案内メッセージとファイルを一緒に送信する
             await target_user.send(content=chat_message, file=discord_file)
-            
-            # 送信した本人に完了報告
             await interaction.followup.send(f"送信完了：{target_user.name} さんのDMへ届けました。", ephemeral=True)
             
         except discord.Forbidden:
@@ -166,12 +161,11 @@ async def send_command(interaction: discord.Interaction):
     )
 
 
-# 🛠️ !msgdel テキストコマンドの登録（変身・自爆システム）
+# 🛠️ !msgdel テキストコマンドの登録
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """過去ログからこのBotのメッセージを全消去し、打たれたコマンドの文字自体を5秒で自爆させます"""
+    """過去ログからこのBotのメッセージを全消去し、打たれたコマンドの文字自体を削除します"""
     
-    # 過去ログからBot自身のメッセージをすべて無言で削除する処理
     async for message in ctx.channel.history(limit=limit):
         if message.author == bot.user and message.id != ctx.message.id:
             try:
@@ -179,11 +173,15 @@ async def msgdel_command(ctx, limit: int = 20):
             except discord.DiscordException:
                 pass
 
-    # あなたの打った「!msgdel」をお掃除メッセージに上書き（変身）させます
     try:
-        await ctx.message.edit(content="🧹 お掃除が完了しました。このメッセージは5秒後に自動消滅します。")
-        await asyncio.sleep(5)
         await ctx.message.delete()
+    except discord.DiscordException:
+        pass
+
+    notice_msg = await ctx.send("🧹 お掃除が完了しました。このメッセージは5秒後に自動消滅します。")
+    await asyncio.sleep(5)
+    try:
+        await notice_msg.delete()
     except discord.DiscordException:
         pass
 
@@ -192,7 +190,6 @@ async def msgdel_command(ctx, limit: int = 20):
 async def on_ready():
     print(f"ログインしました: {bot.user.name}")
 
-# 【GitHub用設定】環境変数 DISCORD_TOKEN からトークンを読み込む
 TOKEN = os.getenv("DISCORD_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
