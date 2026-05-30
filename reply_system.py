@@ -1,6 +1,7 @@
 import discord
 import io
-from discord.ext import commands
+import sys
+from discord import app_commands
 
 # ─── 返信入力用のポップアップ画面（Modal） ───
 class ReplyModal(discord.ui.Modal):
@@ -136,8 +137,22 @@ class SelectModeView(discord.ui.View):
         await interaction.response.send_modal(LetterModal(is_anonymous=False))
 
 
-# 💡 【重要】bot.py側がメインスクリプトから自動インポートされた際、
-# bot.pyの中にある古い「LetterModal」を、このファイルの返信機能付きに強制的に上書き差し替えします。
-import sys
+# 💡 【超強力・強制すり替え処理】
+# bot.pyが読み込まれたタイミングで、bot.py内部の /send コマンドの登録データそのものを
+# このファイルのボタン付き「SelectModeView」を呼び出す仕組みへ強制的に上書き・再登録します。
 if 'bot' in sys.modules:
-    sys.modules['bot'].LetterModal = LetterModal
+    main_mod = sys.modules['bot']
+    if hasattr(main_mod, 'bot'):
+        bot_instance = main_mod.bot
+        
+        # 新しいスラッシュコマンドの挙動を定義
+        @bot_instance.tree.command(name="send", description="指定したユーザーのDMにメッセージ（テキストファイル）を送信します")
+        async def new_send_command(interaction: discord.Interaction):
+            await interaction.response.send_message(
+                "送信モードを選択してください：", 
+                view=SelectModeView(), 
+                ephemeral=True
+            )
+        
+        # 既存の /send コマンドを新コマンドに完全差し替え
+        bot_instance.tree.add_command(new_send_command, override=True)
