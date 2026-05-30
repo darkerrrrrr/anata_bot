@@ -2,8 +2,9 @@ import os
 import discord
 from discord import app_commands
 from discord.ext import commands
+import io
 import asyncio
-# 💡 分割した返信機能付きのボタン画面をここから読み込みます
+# 💡 分割した「返信機能付き」のボタン画面をここから綺麗に読み込みます
 from reply_system import SelectModeView
 
 # ─── Botの本体設定 ───
