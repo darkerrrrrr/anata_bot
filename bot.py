@@ -47,8 +47,9 @@ class LetterModal(discord.ui.Modal):
             return
 
         try:
-            sender = "匿名" if self.is_anonymous else f"{interaction.user.display_name} さん"
-            chat_message = f"【{sender} より、貴方へ大切な想いが届いています】"
+            # 💡 「さん」の後の半角スペースと「より」の前の半角スペースを完全に排除しました
+            sender = "匿名" if self.is_anonymous else f"{interaction.user.display_name}さん"
+            chat_message = f"【{sender}より、貴方へ大切な想いが届いています】"
                 
             plain_text_content = self.letter_content.value
 
@@ -57,7 +58,7 @@ class LetterModal(discord.ui.Modal):
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
             await target_user.send(content=chat_message, file=discord_file)
-            await interaction.followup.send(f"✅ 送信完了：{target_user.display_name} さんのDMへ届けました。", ephemeral=True)
+            await interaction.followup.send(f"✅ 送信完了：{target_user.display_name}さんのDMへ届けました。", ephemeral=True)
             
         except discord.Forbidden:
             await interaction.followup.send("❌ エラー：相手がDMを閉じているため、送信できませんでした。", ephemeral=True)
@@ -108,7 +109,6 @@ async def send_command(interaction: discord.Interaction):
 async def msgdel_command(ctx, limit: int = 20):
     """過去ログからこのBotのメッセージを全消去し、権限があればコマンド文字も無言で削除します"""
     
-    # 💡 権限不足での衝突を防ぐため、Bot自身のメッセージ「だけ」を安全に探して個別消去
     async for message in ctx.channel.history(limit=limit):
         if message.author == bot.user:
             try:
@@ -116,7 +116,6 @@ async def msgdel_command(ctx, limit: int = 20):
             except discord.DiscordException:
                 pass
 
-    # ユーザーの入力したコマンド「!msgdel」を消去（サーバー権限がない場合はスキップしてエラーを防ぐ）
     try:
         await ctx.message.delete()
     except discord.DiscordException:
