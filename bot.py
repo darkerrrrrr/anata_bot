@@ -57,63 +57,14 @@ class LetterModal(discord.ui.Modal):
                 chat_message = f"【{interaction.user.name} さんからのメッセージが届きました】"
                 letter_title = f"{interaction.user.name} さんより、大切な想いが届いています"
                 
-            formatted_content = self.letter_content.value.replace("\n", "<br>")
+            # 💡 テキストファイル用の中身を作成（装飾コードを省き、タイトルと本文を結合）
+            plain_text_content = f"【{letter_title}】\n\n{self.letter_content.value}"
 
-            html_template = f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Letter</title>
-    <style>
-        body {{
-            background-color: #f4f1ea;
-            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-        }}
-        .card {{
-            background: #ffffff;
-            max-width: 500px;
-            width: 100%;
-            padding: 40px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            border-radius: 8px;
-            box-sizing: border-box;
-        }}
-        .title {{
-            font-size: 16px;
-            font-weight: bold;
-            color: #555555;
-            border-bottom: 1px solid #e0e0e0;
-            padding-bottom: 15px;
-            margin-bottom: 25px;
-            text-align: center;
-        }}
-        .content {{
-            font-size: 15px;
-            line-height: 1.8;
-            color: #333333;
-            white-space: normal;
-            word-wrap: break-word;
-        }}
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="title">{letter_title}</div>
-        <div class="content">{formatted_content}</div>
-    </div>
-</body>
-</html>"""
+            # メモリー上にテキストファイル（.txt）を作成
+            file_data = io.BytesIO(plain_text_content.encode('utf-8'))
+            discord_file = discord.File(fp=file_data, filename="letter.txt")
             
-            file_data = io.BytesIO(html_template.encode('utf-8'))
-            discord_file = discord.File(fp=file_data, filename="letter.html")
-            
+            # 相手のDMにメッセージとファイルを送信
             await target_user.send(content=chat_message, file=discord_file)
             await interaction.followup.send(f"送信完了：{target_user.name} さんのDMへ届けました。", ephemeral=True)
             
@@ -152,7 +103,7 @@ bot = MyBot()
 
 
 # 🚀 /send コマンドの登録
-@bot.tree.command(name="send", description="指定したユーザーのDMにメッセージカード（HTML）を送信します")
+@bot.tree.command(name="send", description="指定したユーザーのDMにメッセージ（テキストファイル）を送信します")
 async def send_command(interaction: discord.Interaction):
     await interaction.response.send_message(
         "送信モードを選択してください：", 
