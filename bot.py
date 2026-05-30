@@ -57,14 +57,11 @@ class LetterModal(discord.ui.Modal):
                 chat_message = f"【{interaction.user.name} さんからのメッセージが届きました】"
                 letter_title = f"{interaction.user.name} さんより、大切な想いが届いています"
                 
-            # 💡 テキストファイル用の中身を作成（装飾コードを省き、タイトルと本文を結合）
             plain_text_content = f"【{letter_title}】\n\n{self.letter_content.value}"
 
-            # メモリー上にテキストファイル（.txt）を作成
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
-            # 相手のDMにメッセージとファイルを送信
             await target_user.send(content=chat_message, file=discord_file)
             await interaction.followup.send(f"送信完了：{target_user.name} さんのDMへ届けました。", ephemeral=True)
             
@@ -117,6 +114,7 @@ async def send_command(interaction: discord.Interaction):
 async def msgdel_command(ctx, limit: int = 20):
     """過去ログからこのBotのメッセージを全消去し、打たれたコマンドの文字自体を削除します"""
     
+    # 過去ログからBot自身のメッセージを全消去
     async for message in ctx.channel.history(limit=limit):
         if message.author == bot.user and message.id != ctx.message.id:
             try:
@@ -124,15 +122,9 @@ async def msgdel_command(ctx, limit: int = 20):
             except discord.DiscordException:
                 pass
 
+    # ユーザーが入力した「!msgdel」コマンド自体を削除（通知は出さずに終了）
     try:
         await ctx.message.delete()
-    except discord.DiscordException:
-        pass
-
-    notice_msg = await ctx.send("🧹 お掃除が完了しました。このメッセージは5秒後に自動消滅します。")
-    await asyncio.sleep(5)
-    try:
-        await notice_msg.delete()
     except discord.DiscordException:
         pass
 
