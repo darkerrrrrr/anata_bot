@@ -50,15 +50,15 @@ class LetterModal(discord.ui.Modal):
             return
 
         try:
+            # 💡 条件分岐を整理し、通常時はチャットメッセージ側に見出しを統合
             if self.is_anonymous:
                 chat_message = "【匿名メッセージが届きました】"
-                letter_title = "あなたへ、大切な想いが届いています"
+                plain_text_content = f"【あなたへ、大切な想いが届いています】\n\n{self.letter_content.value}"
             else:
-                chat_message = f"【{interaction.user.name} さんからのメッセージが届きました】"
-                letter_title = f"{interaction.user.name} さんより、大切な想いが届いています"
+                chat_message = f"【{interaction.user.name} さんより、大切な想いが届いています】"
+                plain_text_content = self.letter_content.value
                 
-            plain_text_content = f"【{letter_title}】\n\n{self.letter_content.value}"
-
+            # メモリー上にテキストファイル（.txt）を作成
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
@@ -114,7 +114,6 @@ async def send_command(interaction: discord.Interaction):
 async def msgdel_command(ctx, limit: int = 20):
     """過去ログからこのBotのメッセージを全消去し、打たれたコマンドの文字自体を削除します"""
     
-    # 過去ログからBot自身のメッセージを全消去
     async for message in ctx.channel.history(limit=limit):
         if message.author == bot.user and message.id != ctx.message.id:
             try:
@@ -122,7 +121,6 @@ async def msgdel_command(ctx, limit: int = 20):
             except discord.DiscordException:
                 pass
 
-    # ユーザーが入力した「!msgdel」コマンド自体を削除（通知は出さずに終了）
     try:
         await ctx.message.delete()
     except discord.DiscordException:
