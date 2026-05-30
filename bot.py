@@ -47,7 +47,6 @@ class LetterModal(discord.ui.Modal):
             return
 
         try:
-            # 💡 「貴方へ」を削除し、よりスマートな文面に変更しました
             sender = "匿名" if self.is_anonymous else f"{interaction.user.display_name}さん"
             chat_message = f"【{sender}より、大切な想いが届いています】"
                 
@@ -125,6 +124,10 @@ async def msgdel_command(ctx, limit: int = 20):
 @bot.event
 async def on_ready():
     print(f"ログインしました: {bot.user.name}")
+
+
+# 💡 【重要】起動の直前に別ファイルの返信機能へと処理の線を繋ぎます
+import reply_system
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 if TOKEN:
