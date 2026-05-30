@@ -1,7 +1,6 @@
 import discord
 import io
 import sys
-from discord import app_commands
 
 # ─── 返信入力用のポップアップ画面（Modal） ───
 class ReplyModal(discord.ui.Modal):
@@ -36,6 +35,7 @@ class ReplyModal(discord.ui.Modal):
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="reply.txt")
             
+            # 返信されたメッセージにも往復できるようボタンを添付
             view = ReceiveReplyView(original_sender_id=interaction.user.id)
             await target_user.send(content=chat_message, file=discord_file, view=view)
             
@@ -63,7 +63,8 @@ class ReceiveReplyView(discord.ui.View):
 
 
 # ─── 【最初】のメッセージ入力画面（Modal） ───
-class LetterModal(discord.ui.Modal):
+# 💡 ここでbot.pyの送信処理を横取りし、返信ボタン（ReceiveReplyView）を必ず強制添付します
+class HookedLetterModal(discord.ui.Modal):
     def __init__(self, is_anonymous: bool):
         self.is_anonymous = is_anonymous
         title_text = '送信設定：匿名（名前を隠す）' if is_anonymous else '送信設定：通常（名前を出す）'
@@ -112,6 +113,7 @@ class LetterModal(discord.ui.Modal):
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
             discord_file = discord.File(fp=file_data, filename="letter.txt")
             
+            # 💡 ここで返信用のViewボタンを確実に合流させてDMへ送ります
             view = ReceiveReplyView(original_sender_id=interaction.user.id)
             await target_user.send(content=chat_message, file=discord_file, view=view)
             
@@ -123,36 +125,10 @@ class LetterModal(discord.ui.Modal):
             await interaction.followup.send(f"⚠️ 予期せぬエラーが発生しました: {e}", ephemeral=True)
 
 
-# ─── 【最初】の送信方法を選ぶボタン（View） ───
-class SelectModeView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="匿名（名前を隠して送信）", style=discord.ButtonStyle.primary)
-    async def anonymous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(LetterModal(is_anonymous=True))
-
-    @discord.ui.button(label="通常（名前を出して送信）", style=discord.ButtonStyle.success)
-    async def name_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(LetterModal(is_anonymous=False))
-
-
-# 💡 【超強力・強制すり替え処理】
-# bot.pyが読み込まれたタイミングで、bot.py内部の /send コマンドの登録データそのものを
-# このファイルのボタン付き「SelectModeView」を呼び出す仕組みへ強制的に上書き・再登録します。
-if 'bot' in sys.modules:
-    main_mod = sys.modules['bot']
-    if hasattr(main_mod, 'bot'):
-        bot_instance = main_mod.bot
-        
-        # 新しいスラッシュコマンドの挙動を定義
-        @bot_instance.tree.command(name="send", description="指定したユーザーのDMにメッセージ（テキストファイル）を送信します")
-        async def new_send_command(interaction: discord.Interaction):
-            await interaction.response.send_message(
-                "送信モードを選択してください：", 
-                view=SelectModeView(), 
-                ephemeral=True
-            )
-        
-        # 既存の /send コマンドを新コマンドに完全差し替え
-        bot_instance.tree.add_command(new_send_command, override=True)
+# ─── プログラム起動時に自動でbot.pyのクラスをすり替えるシステム ───
+# 💡 bot.pyに一切手を加えずに、連動エラーを起こしていた原因を根本から解決します
+current_module = sys.modules[__name__]
+for mod_name, mod in list(sys.modules.items()):
+    if mod and mod_name != __name__ and hasattr(mod, 'LetterModal') and hasattr(mod, 'SelectModeView'):
+        # 古いLetterModalを、ボタン付きのHookedLetterModalへ完全上書き
+        mod.LetterModal = HookedLetterModal
