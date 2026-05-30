@@ -1,7 +1,7 @@
 import discord
 import io
 
-# ─── 【機能1】返信入力用のポップアップ画面（Modal） ───
+# ─── 返信入力用のポップアップ画面（Modal） ───
 class ReplyModal(discord.ui.Modal):
     def __init__(self, original_sender_id: int, is_anonymous_reply: bool):
         self.original_sender_id = original_sender_id
@@ -9,7 +9,6 @@ class ReplyModal(discord.ui.Modal):
         title_text = '返信：匿名（名前を隠す）' if is_anonymous_reply else '返信：通常（名前を出す）'
         super().__init__(title=title_text)
 
-        # テキスト入力欄の定義
         self.letter_content = discord.ui.TextInput(
             label='返信メッセージ本文', 
             style=discord.TextStyle.long, 
@@ -47,18 +46,17 @@ class ReplyModal(discord.ui.Modal):
             await interaction.followup.send(f"⚠️ 予期せぬエラーが発生しました: {e}", ephemeral=True)
 
 
-# ─── 【機能2】届いたメッセージに付く「返信方法を選ぶボタン」（View） ───
+# ─── 届いたメッセージに付く「返信方法を選ぶボタン」（View） ───
 class ReceiveReplyView(discord.ui.View):
     def __init__(self, original_sender_id: int):
+        # 💡 ボタンが3分で期限切れエラーになるのを防ぐため、タイムアウトを完全に無効化
         super().__init__(timeout=None)
         self.original_sender_id = original_sender_id
 
-    # 匿名返信ボタン
     @discord.ui.button(label="匿名で返信する", style=discord.ButtonStyle.primary)
     async def anonymous_reply(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(ReplyModal(self.original_sender_id, is_anonymous_reply=True))
 
-    # 通常返信ボタン
     @discord.ui.button(label="名前を出して返信する", style=discord.ButtonStyle.success)
     async def name_reply(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(ReplyModal(self.original_sender_id, is_anonymous_reply=False))
