@@ -47,7 +47,6 @@ class LetterModal(discord.ui.Modal):
             return
 
         try:
-            # 💡 通常時の名前取得を display_name（表示名）に変更し、文言をご指定通りに修正
             sender = "匿名" if self.is_anonymous else f"{interaction.user.display_name} さん"
             chat_message = f"【{sender} より、貴方へ大切な想いが届いています】"
                 
@@ -107,13 +106,19 @@ async def send_command(interaction: discord.Interaction):
 # 🛠️ !msgdel テキストコマンドの登録
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """過去ログからこのBotのメッセージと、打たれたコマンドの文字自体を無言で高速一括削除します"""
+    """過去ログからこのBotのメッセージを全消去し、権限があればコマンド文字も無言で削除します"""
     
-    def is_bot_or_cmd(m):
-        return m.author == bot.user or m.id == ctx.message.id
+    # 💡 権限不足での衝突を防ぐため、Bot自身のメッセージ「だけ」を安全に探して個別消去
+    async for message in ctx.channel.history(limit=limit):
+        if message.author == bot.user:
+            try:
+                await message.delete()
+            except discord.DiscordException:
+                pass
 
+    # ユーザーの入力したコマンド「!msgdel」を消去（サーバー権限がない場合はスキップしてエラーを防ぐ）
     try:
-        await ctx.channel.purge(limit=limit, check=is_bot_or_cmd)
+        await ctx.message.delete()
     except discord.DiscordException:
         pass
 
