@@ -1,7 +1,7 @@
 import os
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import io
 import asyncio
 from reply_system import SelectModeView
@@ -20,20 +20,32 @@ class MyBot(commands.Bot):
 bot = MyBot()
 
 
-# 💡 【新機能：サーバー導入時のDM通知システム】
-# このBotがどこかのサーバーに新しく追加された瞬間に自動で発動します
+# 💡 【アクティビティ固定表示システム】
+# 10分ごとにステータスをチェックし、指定された文字列を常に常駐表示します
+@tasks.loop(minutes=10)
+async def update_activity():
+    await bot.wait_until_ready()
+    
+    # 🔍 【表示文面の設定】
+    # ご指定通り「darker_daysが作成」という親しみやすい形に固定しました
+    activity_text = "darker_daysが作成"
+    
+    # カスタムステータスとしてBotのプロフィールに反映
+    await bot.change_presence(
+        activity=discord.CustomActivity(name=activity_text)
+    )
+
+
+# 💡 【サーバー導入時のDM通知システム】
+# このBotがどこかのサーバーに新しく追加された瞬間に自動で発動し、あなただけに届きます
 @bot.event
 async def on_guild_join(guild: discord.Guild):
-    # 💡 あなた（Botの作成者/オーナー）のDiscordアカウントを自動で特定します
-    # これにより、コード内にあなたのIDを直接書き込まなくても、あなたのDMへ確実に届きます
     if bot.application is None:
         await bot.application_info()
     
     owner = bot.application.owner
-    
     if owner:
         try:
-            # あなたのDMへ送る通知メッセージの作成
             notification_text = (
                 f"🎉 **【Bot新規導入のお知らせ】**\n"
                 f"新しいサーバーにBotが招待されました！\n\n"
@@ -41,18 +53,17 @@ async def on_guild_join(guild: discord.Guild):
                 f"🆔 **サーバーID:** {guild.id}\n"
                 f"👥 **メンバー数:** {guild.member_count}人"
             )
-            # あなたのDMへ直接送信
             await owner.send(content=notification_text)
-            print(f"オーナー（{owner.name}）への導入通知DMの送信に成功しました: {guild.name}")
-        except discord.Forbidden:
-            print(f"エラー：オーナーがDMを閉じているため通知を送れませんでした。")
-        except Exception as e:
-            print(f"通知DM送信中に予期せぬエラーが発生しました: {e}")
+        except Exception:
+            pass
 
 
 @bot.event
 async def on_ready():
     print(f"ログインしました: {bot.user.name}")
+    # 起動した瞬間にアクティビティのループ処理を開始
+    if not update_activity.is_running():
+        update_activity.start()
 
 
 # 🚀 /send コマンドの登録
