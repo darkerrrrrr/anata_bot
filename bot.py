@@ -1,7 +1,7 @@
 import os
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks  # 💡 サーバー数を定期的に数えて更新するために tasks を追加
+from discord.ext import commands
 import io
 import asyncio
 from reply_system import SelectModeView
@@ -20,29 +20,39 @@ class MyBot(commands.Bot):
 bot = MyBot()
 
 
-# 💡 【新機能：アクティビティ自動更新システム】
-# 10分ごとに現在導入されているサーバーの総数を数え直し、Botのステータス画面を更新します
-@tasks.loop(minutes=10)
-async def update_activity():
-    await bot.wait_until_ready()
-    # 導入されているサーバーの数を取得
-    server_count = len(bot.guilds)
+# 💡 【新機能：サーバー導入時のDM通知システム】
+# このBotがどこかのサーバーに新しく追加された瞬間に自動で発動します
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    # 💡 あなた（Botの作成者/オーナー）のDiscordアカウントを自動で特定します
+    # これにより、コード内にあなたのIDを直接書き込まなくても、あなたのDMへ確実に届きます
+    if bot.application is None:
+        await bot.application_info()
     
-    # 🔍 【表示形式の設定】
-    # 例：「3個のサーバーで稼働中」とプロフィールに表示されます
-    activity_text = f"{server_count}個のサーバーで稼働中"
+    owner = bot.application.owner
     
-    # カスタムステータスとしてBotのアクティビティを設定
-    await bot.change_presence(
-        activity=discord.CustomActivity(name=activity_text)
-    )
+    if owner:
+        try:
+            # あなたのDMへ送る通知メッセージの作成
+            notification_text = (
+                f"🎉 **【Bot新規導入のお知らせ】**\n"
+                f"新しいサーバーにBotが招待されました！\n\n"
+                f"🏰 **サーバー名:** {guild.name}\n"
+                f"🆔 **サーバーID:** {guild.id}\n"
+                f"👥 **メンバー数:** {guild.member_count}人"
+            )
+            # あなたのDMへ直接送信
+            await owner.send(content=notification_text)
+            print(f"オーナー（{owner.name}）への導入通知DMの送信に成功しました: {guild.name}")
+        except discord.Forbidden:
+            print(f"エラー：オーナーがDMを閉じているため通知を送れませんでした。")
+        except Exception as e:
+            print(f"通知DM送信中に予期せぬエラーが発生しました: {e}")
 
-# Botの起動が完了した瞬間に、上記のアクティビティ更新システムを裏側でスタートさせます
+
 @bot.event
 async def on_ready():
     print(f"ログインしました: {bot.user.name}")
-    if not update_activity.is_running():
-        update_activity.start()
 
 
 # 🚀 /send コマンドの登録
