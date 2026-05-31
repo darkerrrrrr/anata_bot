@@ -27,8 +27,8 @@ async def update_activity():
     await bot.wait_until_ready()
     
     # 🔍 【表示文面の設定】
-    # ご指定通り「darker_daysが作成」という親しみやすい形に固定しました
-    activity_text = "darker_daysが作成"
+    # ご指定通り「作：@darker_days」に固定しました
+    activity_text = "作：@darker_days"
     
     # カスタムステータスとしてBotのプロフィールに反映
     await bot.change_presence(
