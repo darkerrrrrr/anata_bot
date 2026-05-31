@@ -1,5 +1,6 @@
 import discord
 import io
+import random  # 💡 ファイル名を毎回変えるために追加
 
 # ─── 届いたメッセージに付く「返信方法を選ぶボタン」（View） ───
 class ReceiveReplyView(discord.ui.View):
@@ -49,8 +50,12 @@ class ReplyModal(discord.ui.Modal):
                 
             plain_text_content = self.letter_content.value
 
+            # 💡 【スパム回避策】ランダムな4桁の数字をファイル名に自動付与します
+            rand_num = random.randint(1000, 9999)
+            file_name = f"reply_{rand_num}.txt"
+
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
-            discord_file = discord.File(fp=file_data, filename="reply.txt")
+            discord_file = discord.File(fp=file_data, filename=file_name)
             
             view = ReceiveReplyView(original_sender_id=interaction.user.id)
             await target_user.send(content=chat_message, file=discord_file, view=view)
@@ -90,17 +95,14 @@ class LetterModal(discord.ui.Modal):
         input_name = self.target_username.value.strip().lstrip('@')
         target_user = None
 
-        # 1. まずは既存の所属サーバー内から高速検索
         for guild in interaction.client.guilds:
             member = discord.utils.get(guild.members, name=input_name)
             if member:
                 target_user = member
                 break
 
-        # 💡 2. 【超強力化】見つからなかった場合、Discordの全世界データベースから直接「ユーザー名」で一本釣り検索を試みる
         if not target_user:
             try:
-                # 共通サーバーにいなくても、正確な英数字のユーザー名であればDiscordから直接取得できます
                 target_user = await interaction.client.fetch_user_by_name(input_name)
             except discord.DiscordException:
                 pass
@@ -119,8 +121,12 @@ class LetterModal(discord.ui.Modal):
                 
             plain_text_content = self.letter_content.value
 
+            # 💡 【スパム回避策】最初の送信時も、ファイル名を毎回完全にバラバラに変えて検知を潜り抜けます
+            rand_num = random.randint(1000, 9999)
+            file_name = f"letter_{rand_num}.txt"
+
             file_data = io.BytesIO(plain_text_content.encode('utf-8'))
-            discord_file = discord.File(fp=file_data, filename="letter.txt")
+            discord_file = discord.File(fp=file_data, filename=file_name)
             
             view = ReceiveReplyView(original_sender_id=interaction.user.id)
             await target_user.send(content=chat_message, file=discord_file, view=view)
