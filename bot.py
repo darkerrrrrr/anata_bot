@@ -21,23 +21,16 @@ bot = MyBot()
 
 
 # 💡 【アクティビティ固定表示システム】
-# 10分ごとにステータスをチェックし、指定された文字列を常に常駐表示します
 @tasks.loop(minutes=10)
 async def update_activity():
     await bot.wait_until_ready()
-    
-    # 🔍 【表示文面の設定】
-    # ご指定通り「作：@darker_days」に固定しました
     activity_text = "作：@darker_days"
-    
-    # カスタムステータスとしてBotのプロフィールに反映
     await bot.change_presence(
         activity=discord.CustomActivity(name=activity_text)
     )
 
 
 # 💡 【サーバー導入時のDM通知システム】
-# このBotがどこかのサーバーに新しく追加された瞬間に自動で発動し、あなただけに届きます
 @bot.event
 async def on_guild_join(guild: discord.Guild):
     if bot.application is None:
@@ -50,7 +43,6 @@ async def on_guild_join(guild: discord.Guild):
                 f"🎉 **【Bot新規導入のお知らせ】**\n"
                 f"新しいサーバーにBotが招待されました！\n\n"
                 f"🏰 **サーバー名:** {guild.name}\n"
-                f"🆔 **サーバーID:** {guild.id}\n"
                 f"👥 **メンバー数:** {guild.member_count}人"
             )
             await owner.send(content=notification_text)
@@ -61,13 +53,14 @@ async def on_guild_join(guild: discord.Guild):
 @bot.event
 async def on_ready():
     print(f"ログインしました: {bot.user.name}")
-    # 起動した瞬間にアクティビティのループ処理を開始
     if not update_activity.is_running():
         update_activity.start()
 
 
 # 🚀 /send コマンドの登録
 @bot.tree.command(name="send", description="指定したユーザーのDMにメッセージ（テキストファイル）を送信します")
+@app_commands.allowed_installs(guilds=True, users=True)
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def send_command(interaction: discord.Interaction):
     await interaction.response.send_message(
         "送信モードを選択してください：", 
@@ -79,15 +72,12 @@ async def send_command(interaction: discord.Interaction):
 # 🛠️ !msgdel テキストコマンドの登録
 @bot.command(name="msgdel")
 async def msgdel_command(ctx, limit: int = 20):
-    """過去ログからこのBotのメッセージを全消去し、権限があればコマンド文字も無言で削除します"""
-    
     async for message in ctx.channel.history(limit=limit):
         if message.author == bot.user:
             try:
                 await message.delete()
             except discord.DiscordException:
                 pass
-
     try:
         await ctx.message.delete()
     except discord.DiscordException:
